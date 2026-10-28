@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ChrisCoin Casino</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='15' fill='%23c62b36'/%3E%3Ccircle cx='16' cy='16' r='15' fill='none' stroke='%23f2e8cf' stroke-width='4' stroke-dasharray='5 6.8'/%3E%3Ccircle cx='16' cy='16' r='8' fill='%23f2e8cf'/%3E%3C/svg%3E">
+<meta name="description" content="Live table state for ChrisCoin Casino: the house bankroll, player balances, and the latest rounds.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Limelight&family=Public+Sans:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  color-scheme: dark;
+  --felt: #0f4d36;
+  --felt-deep: #0a3a29;
+  --ivory: #f2e8cf;
+  --ivory-soft: #bfc9b4;
+  --brass: #d4af5a;
+  --red: #c62b36;
+  --board: #000;
+  --line: rgba(242, 232, 207, 0.16);
+}
+* { box-sizing: border-box; }
+html { background: var(--felt-deep); }
+body {
+  margin: 0;
+  min-height: 100vh;
+  color: var(--ivory);
+  background:
+    radial-gradient(ellipse 90% 60% at 50% -10%, rgba(255, 236, 170, 0.14), transparent 70%),
+    var(--felt);
+  font: 400 16px/1.55 "Public Sans", system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+a { color: var(--brass); text-underline-offset: 3px; }
+a:hover { color: var(--ivory); }
+a:focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 2px; }
+.wrap { width: min(1080px, 100% - 32px); margin-inline: auto; }
+
+header { padding: 56px 0 28px; }
+h1 {
+  margin: 0;
+  font: 400 clamp(44px, 9vw, 92px)/0.95 "Limelight", Georgia, serif;
+  color: var(--brass);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+}
+.lede { max-width: 62ch; margin: 18px 0 0; color: var(--ivory-soft); font-size: 17px; }
+.lede a { white-space: nowrap; }
+
+.house {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 8px 0 40px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.house div { padding: 16px 20px 16px 0; }
+.house div + div { padding-left: 20px; border-left: 1px solid var(--line); }
+.house dt { font-size: 14px; color: var(--ivory-soft); }
+.house dd { margin: 2px 0 0; font-size: 28px; font-weight: 800; }
+.house .free dd { color: var(--brass); }
+
+h2 { margin: 0 0 4px; font-size: 22px; font-weight: 800; }
+.note { margin: 0 0 16px; color: var(--ivory-soft); font-size: 14px; }
+
+.board {
+  background: var(--board);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 0 0 6px #2b1a10, 0 0 0 7px rgba(212, 175, 90, 0.5), 0 18px 40px rgba(0, 0, 0, 0.45);
+  margin: 0 0 48px;
+}
+.board ol {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 4px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 112px;
+  gap: 10px;
+  overflow-x: auto;
+  scrollbar-color: #333 transparent;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 150px;
+  padding: 12px 10px 10px;
+  border: 1px solid #222;
+  border-radius: 8px;
+  background: #0b0b0b;
+}
+.tile.win { border-color: var(--brass); box-shadow: inset 0 3px 0 var(--brass); }
+.tile.open { border-style: dashed; border-color: #555; }
+.face { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 86px; text-align: center; }
+.big { display: block; font-size: 30px; font-weight: 800; line-height: 1.1; letter-spacing: -0.5px; }
+.loss .big, .loss .reels { opacity: 0.45; }
+.pocket {
+  display: inline-grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  font-size: 26px;
+  font-weight: 800;
+  color: #fff;
+}
+.pocket.red { background: var(--red); }
+.pocket.black { background: #1c1c1c; box-shadow: inset 0 0 0 2px #444; }
+.pocket.green { background: #138a4f; }
+.reels { font-size: 25px; letter-spacing: 1px; line-height: 58px; }
+.game { display: block; margin-top: 4px; font-size: 12px; color: #9a9a9a; }
+.tile p { margin: 10px 0 0; font-size: 12.5px; line-height: 1.35; color: #cfcfcf; }
+.tile p a { color: #e8e8e8; text-decoration: none; font-weight: 600; overflow-wrap: anywhere; }
+.tile p a:hover { text-decoration: underline; }
+.result { display: block; font-weight: 600; }
+.win .result { color: var(--brass); }
+.empty-board { margin: 0; padding: 30px 6px; color: #aaa; }
+
+.columns { display: grid; grid-template-columns: 3fr 2fr; gap: 48px; margin-bottom: 48px; }
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th { text-align: left; font-size: 13px; font-weight: 600; color: var(--ivory-soft); padding: 0 12px 8px 0; }
+td { padding: 10px 12px 10px 0; border-top: 1px solid var(--line); }
+.num { text-align: right; }
+td.num { font-weight: 600; }
+.up { color: var(--brass); }
+.down { color: #e8a3a3; }
+.frozen { font-size: 13px; color: #9fd3ff; margin-left: 6px; }
+
+.paytable { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.7fr) minmax(0, 1fr); gap: 32px; padding: 28px 0; border-top: 1px solid var(--line); }
+.paytable h3 { margin: 0 0 6px; font-size: 16px; }
+.paytable code { font-size: 14px; color: var(--brass); }
+.paytable p { margin: 6px 0 0; color: var(--ivory-soft); font-size: 14.5px; }
+.pays { display: grid; grid-template-columns: max-content max-content; gap: 2px 18px; margin: 8px 0 0; color: var(--ivory-soft); font-size: 14.5px; }
+.pays dt { white-space: nowrap; }
+.pays dd { margin: 0; font-weight: 600; color: var(--ivory); }
+.bets { width: auto; margin-top: 8px; font-size: 14.5px; }
+.bets th { padding-bottom: 4px; }
+.bets td { padding: 5px 16px 5px 0; border-top: 0; color: var(--ivory-soft); vertical-align: top; }
+.bets td:first-child { white-space: nowrap; }
+.bets td.num { padding-right: 0; color: var(--ivory); }
+.bets code { white-space: nowrap; }
+
+footer { padding: 24px 0 48px; color: var(--ivory-soft); font-size: 13.5px; border-top: 1px solid var(--line); }
+footer p { margin: 0 0 4px; }
+
+@media (max-width: 760px) {
+  header { padding-top: 36px; }
+  .house { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .house div:nth-child(3) { padding-left: 0; border-left: 0; }
+  .house div:nth-child(n+3) { border-top: 1px solid var(--line); }
+  .house dd { font-size: 22px; }
+  .columns, .paytable { grid-template-columns: 1fr; gap: 36px; }
+  .board { padding: 12px; }
+  .bets { font-size: 13.5px; }
+  .bets code { font-size: 13px; }
+  .bets td { padding-right: 10px; }
+}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <h1>ChrisCoin Casino</h1>
+  <p class="lede">A casino that runs on GitHub issues and pays in <a href="https://github.com/{{.Upstream}}">ChrisCoin</a>. Every bet is recorded in a public ledger, and this page shows its latest state. <a href="https://github.com/{{.Repository}}/issues/new?template=account.md">Open an account</a> to play.</p>
+</header>
+
+<main class="wrap">
+  {{- $s := .State}}
+  <dl class="house" aria-label="House money">
+    <div class="free"><dt>House can still cover</dt><dd>{{cc $s.FreeHouse}} CC</dd></div>
+    <div><dt>Owed to players</dt><dd>{{cc $s.Liabilities}} CC</dd></div>
+    <div><dt>Treasury holds</dt><dd>{{cc $s.Treasury}} CC</dd></div>
+    <div><dt>Rounds played</dt><dd>{{cc .Rounds}}</dd></div>
+  </dl>
+
+  <section aria-labelledby="board-title">
+    <h2 id="board-title">Latest rounds</h2>
+    <p class="note">Newest first. {{if .Rounds}}Players have staked {{cc .Staked}} CC and won back {{cc .Returned}} CC.{{end}}</p>
+    <div class="board">
+      {{- if .Board}}
+      <ol>
+        {{- range .Board}}
+        <li class="tile {{.Outcome}}">
+          <div class="face">
+            {{- if not .Settled}}
+            <span class="big">…</span><span class="game">spinning</span>
+            {{- else if eq .Game "roulette"}}
+            <span class="pocket {{.Color}}">{{.Pocket}}</span><span class="game">roulette, {{.Bet}}</span>
+            {{- else if eq .Game "slots"}}
+            <span class="reels">{{range .Reels}}{{.}}{{end}}</span><span class="game">slots</span>
+            {{- else}}
+            <span class="big">{{times .Payout .Stake}}</span><span class="game">wager</span>
+            {{- end}}
+          </div>
+          <p><a href="https://github.com/{{$.Repository}}/issues/{{.Issue}}">@{{.Login}}</a>
+            <span class="result">{{if not .Settled}}{{cc .Stake}} CC riding{{else if eq .Outcome "win"}}won {{cc .Payout}} on {{cc .Stake}}{{else if eq .Outcome "push"}}got {{cc .Stake}} back{{else if .Payout}}{{cc .Payout}} back of {{cc .Stake}}{{else}}lost {{cc .Stake}}{{end}}</span></p>
+        </li>
+        {{- end}}
+      </ol>
+      {{- else}}
+      <p class="empty-board">No rounds yet. Open an account and place the first bet.</p>
+      {{- end}}
+    </div>
+  </section>
+
+  <div class="columns">
+    <section aria-labelledby="players-title">
+      <h2 id="players-title">Players</h2>
+      <p class="note">Balances available to play or cash out. Net counts rounds only, not deposits or cash-outs.</p>
+      {{- if .Players}}
+      <div class="scroll">
+      <table>
+        <thead><tr><th scope="col">Player</th><th scope="col" class="num">Balance</th><th scope="col" class="num">Rounds</th><th scope="col" class="num">Net</th></tr></thead>
+        <tbody>
+          {{- range .Players}}
+          <tr>
+            <td>{{if .Issue}}<a href="https://github.com/{{$.Repository}}/issues/{{.Issue}}">@{{.Login}}</a>{{else}}@{{.Login}}{{end}}{{if .Frozen}}<span class="frozen">frozen</span>{{end}}</td>
+            <td class="num">{{cc .Balance}}</td>
+            <td class="num">{{.Rounds}}</td>
+            <td class="num {{if gt .Net 0}}up{{else if lt .Net 0}}down{{end}}">{{signed .Net}}</td>
+          </tr>
+          {{- end}}
+        </tbody>
+      </table>
+      </div>
+      {{- else}}
+      <p>No players yet.</p>
+      {{- end}}
+    </section>
+
+    <section aria-labelledby="cashouts-title">
+      <h2 id="cashouts-title">Cash-outs</h2>
+      <p class="note">Each cash-out pays the amount minus a 1 CC fee in ChrisCoin.</p>
+      {{- if .Cashouts}}
+      <table>
+        <thead><tr><th scope="col">Player</th><th scope="col" class="num">Amount</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          {{- range .Cashouts}}
+          <tr>
+            <td>@{{.Login}}</td>
+            <td class="num">{{cc .Amount}}</td>
+            <td>{{if .Issue}}<a href="https://github.com/{{$.Upstream}}/issues/{{.Issue}}">{{.Status}}</a>{{else}}{{.Status}}{{end}}</td>
+          </tr>
+          {{- end}}
+        </tbody>
+      </table>
+      {{- else}}
+      <p>Nobody has cashed out yet.</p>
+      {{- end}}
+    </section>
+  </div>
+
+  <section class="paytable" aria-label="Games">
+    <div>
+      <h3>Wager</h3>
+      <code>/wager 10</code>
+      <p>Get back anything from 0 to twice your stake. Returns 95% on average.</p>
+    </div>
+    <div>
+      <h3>Roulette</h3>
+      <div class="scroll">
+      <table class="bets">
+        <thead><tr><th scope="col">Bet</th><th scope="col">Wins on</th><th scope="col" class="num">Pays</th></tr></thead>
+        <tbody>
+          <tr><td><code>/roulette 10 red</code></td><td>Any red number</td><td class="num">2×</td></tr>
+          <tr><td><code>/roulette 10 black</code></td><td>Any black number</td><td class="num">2×</td></tr>
+          <tr><td><code>/roulette 10 odd</code></td><td>1, 3, 5 … 35. Use <code>even</code> for the rest</td><td class="num">2×</td></tr>
+          <tr><td><code>/roulette 10 low</code></td><td>1 to 18. Use <code>high</code> for 19 to 36</td><td class="num">2×</td></tr>
+          <tr><td><code>/roulette 10 1-12</code></td><td>1 to 12. Also <code>13-24</code> and <code>25-36</code></td><td class="num">3×</td></tr>
+          <tr><td><code>/roulette 5 17</code></td><td>Only 17. Any number 0 to 36 works</td><td class="num">36×</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>The wheel has a single green zero. Only a bet on <code>0</code> wins when it comes up.</p>
+    </div>
+    <div>
+      <h3>Slots</h3>
+      <code>/slots 10</code>
+      <dl class="pays">
+        <dt>7️⃣7️⃣7️⃣</dt><dd>50×</dd>
+        <dt>⭐⭐⭐</dt><dd>25×</dd>
+        <dt>🔔🔔🔔</dt><dd>12×</dd>
+        <dt>🍋🍋🍋</dt><dd>8×</dd>
+        <dt>🍒🍒🍒</dt><dd>3×</dd>
+        <dt>Any two 🍒</dt><dd>2×</dd>
+      </dl>
+    </div>
+  </section>
+</main>
+
+<footer class="wrap">
+  <p>Built from <a href="https://github.com/{{.Repository}}/blob/{{if .Commit}}{{.Commit}}{{else}}main{{end}}/ledger/events.jsonl">the ledger</a>{{if .Commit}} at commit {{short .Commit}}{{end}}{{if .Updated}}, last changed {{.Updated}}{{end}}.</p>
+</footer>
+</body>
+</html>

@@ -12,16 +12,19 @@ import (
 	gh "chriscoin-casino/internal/github"
 	"chriscoin-casino/internal/ledger"
 	"chriscoin-casino/internal/processor"
+	"chriscoin-casino/internal/site"
 )
 
 func run() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: casino validate|state|process [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH]")
+		return fmt.Errorf("usage: casino validate|state|process|site [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH] [--out _site] [--commit SHA]")
 	}
 	flags := flag.NewFlagSet(os.Args[1], flag.ContinueOnError)
 	configPath := flags.String("config", "casino.json", "configuration file")
 	ledgerPath := flags.String("ledger", "ledger/events.jsonl", "local ledger")
 	basePath := flags.String("base-ledger", "", "previous ledger; require append-only prefix")
+	outDir := flags.String("out", "_site", "static site output directory")
+	commit := flags.String("commit", "", "ledger commit shown on the static site")
 	if err := flags.Parse(os.Args[2:]); err != nil {
 		return err
 	}
@@ -58,6 +61,16 @@ func run() error {
 			return enc.Encode(s)
 		}
 		fmt.Printf("Validated %d events. Player liabilities: %d CC. House reserve after exposure: %d CC.\n", len(events), s.Liabilities(), s.FreeHouse())
+		return nil
+	case "site":
+		data, err := os.ReadFile(*ledgerPath)
+		if err != nil {
+			return err
+		}
+		if err := site.Build(data, *outDir, *commit); err != nil {
+			return err
+		}
+		fmt.Printf("Wrote %s/index.html\n", *outDir)
 		return nil
 	case "process":
 		if *ledgerPath != "ledger/events.jsonl" || *basePath != "" {
