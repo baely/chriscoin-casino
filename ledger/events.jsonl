@@ -126,3 +126,4 @@
 {"version":1,"sequence":126,"id":"settle-comment-6482275886","type":"settle","at":"2026-10-28T22:28:12.505411128Z","amount":199998,"ref":"comment-6482275886","game_version":1,"draw":{"gate":0,"return":0,"pocket":26}}
 {"version":1,"sequence":127,"id":"comment-6482312715","type":"withdraw","at":"2026-10-28T22:29:53.622635218Z","user_id":61171623,"login":"dbut2","issue":123,"comment":6482312715,"body_hash":"95bc4d2283271d900c8fb2b2c8046aea09761d64a221d00dfae0ee4a1afc79cd","amount":199998,"draw":{"gate":0,"return":0}}
 {"version":1,"sequence":128,"id":"attempt-comment-6482312715","type":"attempt","at":"2026-10-28T22:30:00.425998772Z","ref":"comment-6482312715","draw":{"gate":0,"return":0}}
+{"version":1,"sequence":129,"id":"submitted-comment-6482312715","type":"submitted","at":"2026-10-28T22:30:06.820349342Z","issue":82,"ref":"comment-6482312715","draw":{"gate":0,"return":0}}
