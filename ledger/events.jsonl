@@ -47,3 +47,4 @@
 {"version":1,"sequence":47,"id":"settle-comment-6468018226","type":"settle","at":"2026-10-28T11:40:13.734396203Z","amount":160,"ref":"comment-6468018226","game_version":1,"draw":{"gate":0,"return":0,"pocket":35}}
 {"version":1,"sequence":48,"id":"comment-6468042115","type":"withdraw","at":"2026-10-28T11:41:21.700852985Z","user_id":83744767,"login":"bailey-butler","issue":10,"comment":6468042115,"body_hash":"597508d8002b41015f35720e2b8aa56a9b12f254700f62e5606e1889e10f62f7","amount":160,"draw":{"gate":0,"return":0}}
 {"version":1,"sequence":49,"id":"attempt-comment-6468042115","type":"attempt","at":"2026-10-28T11:41:29.651590075Z","ref":"comment-6468042115","draw":{"gate":0,"return":0}}
+{"version":1,"sequence":50,"id":"submitted-comment-6468042115","type":"submitted","at":"2026-10-28T11:41:37.746189667Z","issue":62,"ref":"comment-6468042115","draw":{"gate":0,"return":0}}
