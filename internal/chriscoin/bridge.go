@@ -12,6 +12,7 @@ type Transfer struct {
 	Issue    int
 	From, To int64
 	Amount   int64
+	Request  string // the paid request, for fulfillments
 }
 type Snapshot struct {
 	Events    []Event
@@ -51,6 +52,7 @@ func Read(data []byte, repository string) (Snapshot, error) {
 			r := state.Requests[e.Source.Command.RequestID]
 			t.To = r.Requester
 			t.Amount = r.Amount
+			t.Request = r.ID
 		default:
 			continue
 		}
@@ -69,6 +71,14 @@ func (u Snapshot) Sync(s *ledger.State, commit string) (ledger.Event, error) {
 		return e, fmt.Errorf("treasury must first open a ChrisCoin account")
 	}
 	e.Treasury = treasury.Available
+	// Only payments of the casino's own deposit requests become credits.
+	// Direct transfers and other payments to the treasury are tips.
+	requests := map[string]bool{}
+	for _, d := range s.Deposits {
+		if d.UpstreamIssue > 0 {
+			requests[fmt.Sprintf("request-%d", d.UpstreamIssue)] = true
+		}
+	}
 	prior := map[string]bool{}
 	for _, ev := range u.Events[:s.UpstreamCount] {
 		prior[ev.ID] = true
@@ -77,7 +87,7 @@ func (u Snapshot) Sync(s *ledger.State, commit string) (ledger.Event, error) {
 		if prior[t.ID] {
 			continue
 		}
-		if t.To == s.Config.TreasuryID && t.From != t.To {
+		if t.To == s.Config.TreasuryID && t.From != t.To && requests[t.Request] {
 			a := u.State.Accounts[t.From]
 			e.Credits = append(e.Credits, ledger.Credit{ID: t.ID, UserID: t.From, Login: a.Login, Amount: t.Amount})
 		}

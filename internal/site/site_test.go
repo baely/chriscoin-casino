@@ -2,12 +2,16 @@ package site
 
 import (
 	"fmt"
+	"html"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	cc "chriscoin-casino/internal/chriscoin"
 	"chriscoin-casino/internal/game"
 	"chriscoin-casino/internal/ledger"
 )
@@ -28,6 +32,7 @@ func demo(t *testing.T) []byte {
 	}
 	hash := ledger.Hash([]byte("demo"))
 	add(ledger.Event{ID: "init", Type: "init", Config: &cfg, Repository: "baely/chriscoin-casino", UpstreamCommit: cfg.StartingCommit, UpstreamHash: hash, Treasury: 5000})
+	add(ledger.Event{ID: "account-9", Type: "account", UserID: 9, Login: "house", Issue: 9})
 	players := []struct {
 		id    int64
 		login string
@@ -97,6 +102,15 @@ func TestBuildRendersEveryState(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Fatalf("page is missing %q", want)
 		}
+	}
+	href := regexp.MustCompile(`class="tip" href="([^"]+)"`).FindStringSubmatch(page)
+	if href == nil || !strings.Contains(page, "Tip the House") {
+		t.Fatal("missing tip jar")
+	}
+	tip, err := url.Parse(html.UnescapeString(href[1]))
+	offer := cc.Command{Action: "offer", Recipient: "house", Amount: 10}
+	if q := tip.Query(); err != nil || tip.Host != "github.com" || tip.Path != "/cdlewis/ChrisCoin/issues/new" || q.Get("template") != "request.md" || q.Get("title") != "ChrisCoin: offer 10 to house" || q.Get("body") != cc.RequestBody(offer, "") {
+		t.Fatalf("tip link does not prefill a 10 CC offer to the treasury: %s", href[1])
 	}
 	if strings.Contains(page, "in fees") {
 		t.Fatal("page shows house fee details")

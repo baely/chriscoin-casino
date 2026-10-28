@@ -6,7 +6,7 @@ This is a working implementation draft. Automated tests exercise the complete fl
 
 ## Playing
 
-Open an issue using **Open casino account** to get your personal account and welcome instructions. Use `/deposit N` there to receive a ChrisCoin payment link, or transfer CC directly to the configured treasury account in [ChrisCoin](https://github.com/cdlewis/ChrisCoin). If you deposit before opening an issue, the credit stays against your numeric GitHub ID and becomes available when you open your first issue. The actual payer receives the credit after settlement, minus 1 CC.
+Open an issue using **Open casino account** to get your personal account and welcome instructions. Use `/deposit N` there to receive a ChrisCoin payment link. Paying that link is the only way to add chips. Whoever pays it receives the credit after settlement, minus 1 CC. If the payer has no casino issue yet, the credit stays against their numeric GitHub ID until they open one. CC sent straight to the treasury account in [ChrisCoin](https://github.com/cdlewis/ChrisCoin) is never credited to a player; it is a tip for the house. The casino page links a prefilled 10 CC tip.
 
 Comment on your account issue:
 
@@ -41,7 +41,7 @@ The treasury account can comment these on a player's account issue:
 /unfreeze
 ```
 
-`/credit N reason` adds N CC to the player's balance from the house, even if that takes the house balance negative. `/freeze reason` pauses the player's wagers and `/deposit` requests. `/withdraw` and `/balance` keep working, so a frozen balance always stays the player's. Settled direct deposits are still credited. `/unfreeze` lifts the freeze. Every operator command is a public ledger event with its reason, and the player sees the reason in the reply. The treasury's comments without a slash on player issues are ignored, so the operator can chat with a player there. No command takes funds from a player or changes a wager result.
+`/credit N reason` adds N CC to the player's balance from the house, even if that takes the house balance negative. `/freeze reason` pauses the player's wagers and `/deposit` requests. `/withdraw` and `/balance` keep working, so a frozen balance always stays the player's. Requests the player already received can still be paid and credited. `/unfreeze` lifts the freeze. Every operator command is a public ledger event with its reason, and the player sees the reason in the reply. The treasury's comments without a slash on player issues are ignored, so the operator can chat with a player there. No command takes funds from a player or changes a wager result.
 
 The treasury account cannot deposit into itself: a self-payment moves no CC and creates no player credit or deposit fee. Use a separate GitHub account to play when you also operate the treasury.
 
@@ -76,11 +76,11 @@ Complete these GitHub steps:
 3. While signed in as `baely`, create a **personal access token (classic)** with the **`public_repo`** scope and an expiry you can rotate before it lapses. Store it in the casino repository under **Settings → Secrets and variables → Actions** as **`CHRISCOIN_TOKEN`**. ChrisCoin belongs to `cdlewis`; fine-grained PATs cannot write to an unrelated public repository in this access arrangement. This token creates deposit requests and outgoing withdrawal issues as `baely`. Do not commit the token to Git.
 4. Manually run **Casino ledger** from the repository's Actions tab. The worker initializes from the fixed starting commit and immediately imports any subsequent settled payments. Then verify a small deposit, wager, and withdrawal with two real GitHub accounts.
 
-No new ChrisCoin account is needed. The 1,067 CC already held by `baely` at the baseline becomes opening house capital; transfers recorded at or before that baseline do not become player deposits. Payments to the treasury after the baseline are imported even if they arrive before the casino's first run. Keep the personal account funded so players can cash out.
+No new ChrisCoin account is needed. The 1,067 CC already held by `baely` at the baseline becomes opening house capital; transfers recorded at or before that baseline do not become player deposits. Payments to the treasury that are not for a casino deposit request are kept as house income. Keep the personal account funded so players can cash out.
 
 The initial configuration is recorded in the ledger. Changing the treasury, upstream repository, or starting commit after initialization requires an explicit migration; the worker refuses a configuration mismatch. The ordinary `GITHUB_TOKEN` is supplied automatically by Actions and needs no manually created secret.
 
-Without `CHRISCOIN_TOKEN`, direct deposits and wagers still work. Guided `/deposit` requests and withdrawals remain pending until a correctly authenticated token is configured; withdrawals keep their funds locked.
+Without `CHRISCOIN_TOKEN`, wagers still work, but no deposits are possible. `/deposit` requests and withdrawals remain pending until a correctly authenticated token is configured; withdrawals keep their funds locked.
 
 GitHub references: [repository Actions permissions](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository), [personal access token limitations](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/managing-your-personal-access-tokens), and [public repository token scope](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps).
 
@@ -111,7 +111,7 @@ Every run reconciles the upstream ledger, handles account issues and commands, a
 
 A `/deposit N` command first records the intent and creates a treasury-authored ChrisCoin payment request. Its reply shows a prefilled Pay link once the request appears in ChrisCoin's canonical ledger. The player submits the fulfillment issue while authenticated as themselves; the casino never gets their token. Retrying payment against the same request cannot pay it twice. Upstream issues use ChrisCoin's standard titles and fenced JSON commands, with an opaque hidden reference for retry recovery. If request creation loses its API response, recovery checks treasury-authored references before creating another request. Creating a request does not transfer or reserve player funds.
 
-Direct transfers remain an independent deposit path. Paying a request and sending a separate transfer are two deposits, each with its own fee. Because ChrisCoin allows another account to fulfill a named payer's request, credit always follows the authenticated actual payer.
+Only payments of the casino's own deposit requests are reconciled into balances. Direct transfers, accepted offers, and requests the treasury created by hand are tips to the house. Every run links recovered deposit requests before importing ChrisCoin payments, so a request found after a lost API response is still credited when paid. Because ChrisCoin allows another account to fulfill a named payer's request, credit always follows the authenticated actual payer.
 
 Deposits are credited only after upstream settlement. Upstream repository identity, the imported prefix hash, settled payer and recipient IDs, and unique payment IDs prevent forged receipts and repeated credits. Personal treasury spending reduces what players can withdraw. Fee totals are accounting records, not an automated transfer to a separate wallet.
 
@@ -131,5 +131,6 @@ A stale or reused upstream username pauses a withdrawal rather than paying a dif
 - `internal/processor`: authenticated account issues, command handling, PR checkpoints, upstream reconciliation, and recovery.
 - `internal/github`: repository REST client and exact-head PR merging.
 - `internal/chriscoin`: upstream v1 ledger replay and settled transfer recognition.
+- `internal/site`: the static casino page built by `go run ./cmd/casino site`.
 
-The upstream replay and GitHub client are adapted from ChrisCoin under its MIT license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [DESIGN.md](DESIGN.md) contains the original design draft. The implementation uses player-opened account issues, duplicate issue recovery, ownership redirects, welcome messages, and both deposit paths; a static website is outside this draft.
+The upstream replay and GitHub client are adapted from ChrisCoin under its MIT license; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). [DESIGN.md](DESIGN.md) contains the original design draft. The implementation uses player-opened account issues, duplicate issue recovery, ownership redirects, welcome messages, and request-only deposits.

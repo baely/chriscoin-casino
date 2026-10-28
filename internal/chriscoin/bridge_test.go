@@ -18,12 +18,15 @@ func TestSettledTransfersAndPrefix(t *testing.T) {
 	treasury := Actor{ID: 9, Login: "house"}
 	alice := Actor{ID: 1, Login: "alice"}
 	events := []Event{upstreamEvent(1, treasury, "allowance", Command{Action: "claim"}, 0)}
-	opening := ledger.State{Config: ledger.Config{TreasuryID: 9}, UpstreamCount: 1, UpstreamHash: ledger.Hash(Serialize(events)), Withdrawals: map[string]*ledger.Withdrawal{}}
+	opening := ledger.State{Config: ledger.Config{TreasuryID: 9}, UpstreamCount: 1, UpstreamHash: ledger.Hash(Serialize(events)), Withdrawals: map[string]*ledger.Withdrawal{}, Deposits: map[string]*ledger.Deposit{"comment-1": {UpstreamIssue: 5}}}
 	events = append(events, upstreamEvent(2, alice, "send", Command{Action: "offer", Recipient: "house", Amount: 20}, 9))
 	events = append(events, upstreamEvent(3, alice, "offer", Command{Action: "offer", Recipient: "someone", Amount: 10}, 0))
 	events = append(events, upstreamEvent(4, treasury, "accept", Command{Action: "accept", OfferID: "offer-3"}, 0))
 	events = append(events, upstreamEvent(5, treasury, "request", Command{Action: "request", Payer: "alice", Amount: 5}, 0))
 	events = append(events, upstreamEvent(6, alice, "fulfill", Command{Action: "fulfill", RequestID: "request-5"}, 0))
+	// A request the treasury made by hand is not a casino deposit.
+	events = append(events, upstreamEvent(7, treasury, "request", Command{Action: "request", Payer: "alice", Amount: 7}, 0))
+	events = append(events, upstreamEvent(8, alice, "fulfill", Command{Action: "fulfill", RequestID: "request-7"}, 0))
 	up, err := Read(Serialize(events), "test/coin")
 	if err != nil {
 		t.Fatal(err)
@@ -32,13 +35,10 @@ func TestSettledTransfersAndPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(e.Credits) != 3 || e.Treasury != 135 {
+	// Only the casino request is credited; the send, accepted offer, and
+	// hand-made request are tips to the house.
+	if len(e.Credits) != 1 || e.Credits[0].ID != "issue-6" || e.Credits[0].UserID != 1 || e.Credits[0].Amount != 5 || e.Treasury != 142 {
 		t.Fatalf("wrong settled credits: %+v", e)
-	}
-	for _, c := range e.Credits {
-		if c.UserID != 1 {
-			t.Fatal("credit assigned to acceptor/requester instead of payer")
-		}
 	}
 	opening.UpstreamHash = strings.Repeat("0", 64)
 	if _, err := up.Sync(&opening, strings.Repeat("b", 40)); err == nil {

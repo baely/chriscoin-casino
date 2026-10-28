@@ -47,6 +47,25 @@ h1 {
 }
 .lede { max-width: 62ch; margin: 18px 0 0; color: var(--ivory-soft); font-size: 17px; }
 .lede a { white-space: nowrap; }
+.tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid rgba(212, 175, 90, 0.55);
+  border-radius: 999px;
+  color: var(--ivory);
+  text-decoration: none;
+  font-size: 15px;
+}
+.tip svg { flex: none; width: 30px; height: 30px; }
+.tip strong { color: var(--brass); font-weight: 800; }
+.tip .amount { color: var(--ivory-soft); font-size: 13.5px; }
+.tip:hover { border-color: var(--brass); background: rgba(212, 175, 90, 0.1); color: var(--ivory); }
+.tip:hover .coin { transform: translateY(2.5px); }
+.coin { transition: transform 0.2s ease-out; }
+@media (prefers-reduced-motion: reduce) { .coin { transition: none; } }
 
 .house {
   display: grid;
@@ -166,6 +185,19 @@ footer p { margin: 0 0 4px; }
 <header class="wrap">
   <h1>ChrisCoin Casino</h1>
   <p class="lede">A casino that runs on GitHub issues and pays in <a href="https://github.com/{{.Upstream}}">ChrisCoin</a>. Every bet is recorded in a public ledger, and this page shows its latest state. <a href="https://github.com/{{.Repository}}/issues/new?template=account.md">Open an account</a> to play.</p>
+  {{- if .TipURL}}
+  <a class="tip" href="{{.TipURL}}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M7.5 9.2c-2 1.5-3 3.6-3 6.3v2.2a3.3 3.3 0 0 0 3.3 3.3h8.4a3.3 3.3 0 0 0 3.3-3.3v-2.2c0-2.7-1-4.8-3-6.3Z" fill="rgba(242,232,207,0.16)" stroke="#f2e8cf" stroke-width="1.5" stroke-linejoin="round"/>
+      <circle cx="9.6" cy="17.6" r="2.1" fill="#d4af5a"/>
+      <circle cx="14.4" cy="17" r="2.1" fill="#d4af5a" stroke="#0f4d36" stroke-width="0.8"/>
+      <rect x="6.3" y="6.4" width="11.4" height="3" rx="1" fill="#d4af5a"/>
+      <g class="coin"><circle cx="12" cy="3.6" r="2.4" fill="#d4af5a" stroke="#0f4d36" stroke-width="0.9"/></g>
+    </svg>
+    <span>Like the Casino? <strong>Tip the House</strong></span>
+    <span class="amount">{{.TipAmount}} CC</span>
+  </a>
+  {{- end}}
 </header>
 
 <main class="wrap">

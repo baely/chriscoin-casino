@@ -212,11 +212,28 @@ func fixture(t *testing.T) (*Processor, *memory, *upstream) {
 		t.Fatal(err)
 	}
 	m.issues = []gh.Issue{{Number: 1, User: alice, Body: "/open", State: "open"}}
-	u.add(alice, "send", cc.Command{Action: "offer", Recipient: "house", Amount: 40}, 9, 0)
+	deposit(t, p, m, u, alice, 1, alice, 9000, 40)
+	return p, m, u
+}
+
+// deposit funds a player the only way the casino credits: owner comments
+// /deposit on their issue, then payer pays the resulting casino request.
+// Its upstream issues are numbered from 10*comment, clear of other tests.
+func deposit(t *testing.T, p *Processor, m *memory, u *upstream, owner gh.User, issue int, payer gh.User, id int64, amount int64) {
+	t.Helper()
+	m.comments[issue] = append(m.comments[issue], gh.Comment{ID: id, Body: fmt.Sprintf("/deposit %d", amount), User: owner, CreatedAt: testNow, UpdatedAt: testNow})
+	created, issues := u.created, len(u.issues)
+	u.created = int(id)*10 - 101
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return p, m, u
+	number := m.state(t).Deposits[fmt.Sprintf("comment-%d", id)].UpstreamIssue
+	u.add(house, "request", cc.Command{Action: "request", Payer: owner.Login, Amount: amount}, 0, number)
+	u.add(payer, "fulfill", cc.Command{Action: "fulfill", RequestID: fmt.Sprintf("request-%d", number)}, 0, number+1)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	u.created, u.issues = created, u.issues[:issues]
 }
 func comment(m *memory, id int64, body string, user gh.User) {
 	m.comments[1] = append(m.comments[1], gh.Comment{ID: id, Body: body, User: user, CreatedAt: testNow, UpdatedAt: testNow})
@@ -321,11 +338,7 @@ func TestOwnershipEditsAndRejectionsStayRejected(t *testing.T) {
 			t.Fatal("unsafe command accepted", id)
 		}
 	}
-	u.add(house, "send", cc.Command{Action: "offer", Recipient: "alice", Amount: 50}, 1, 0)
-	u.add(alice, "send", cc.Command{Action: "offer", Recipient: "house", Amount: 50}, 9, 0)
-	if err := p.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
+	deposit(t, p, m, u, alice, 1, alice, 9001, 50)
 	if len(m.state(t).Wagers) != 0 {
 		t.Fatal("previous rejection executed after new funding")
 	}
@@ -407,10 +420,8 @@ func TestDepositWaitsForIssueOpenedByPayer(t *testing.T) {
 	p, m, u := fixture(t)
 	bob := gh.User{ID: 2, Login: "bob", Type: "User"}
 	before := len(m.issues)
-	u.add(bob, "send", cc.Command{Action: "offer", Recipient: "house", Amount: 20}, 9, 0)
-	if err := p.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
+	// bob pays alice's casino request before opening an issue of his own.
+	deposit(t, p, m, u, alice, 1, bob, 9001, 20)
 	s := m.state(t)
 	if s.Accounts[bob.ID].Issue != 0 || s.Accounts[bob.ID].Available != 19 || len(m.issues) != before {
 		t.Fatal("deposit created or assigned an issue")
@@ -472,7 +483,7 @@ func (m *memory) ReopenIssue(_ context.Context, n int) error {
 	return fmt.Errorf("issue %d not found", n)
 }
 
-func TestFirstRunImportsPaymentsAfterPinnedBaseline(t *testing.T) {
+func TestFirstRunTreatsPaymentsAfterBaselineAsTips(t *testing.T) {
 	m := newMemory()
 	u := &upstream{}
 	u.add(house, "allowance", cc.Command{Action: "claim"}, 0, 0)
@@ -486,8 +497,8 @@ func TestFirstRunImportsPaymentsAfterPinnedBaseline(t *testing.T) {
 	if s.Events["init"].UpstreamCommit != starting || s.Events["init"].Treasury != 100 || s.Events["init"].UpstreamCount != 1 {
 		t.Fatal("initialization drifted to live head")
 	}
-	if s.Accounts[alice.ID].Available != 39 || s.Fees != 1 || s.Treasury != 140 {
-		t.Fatalf("payment between pinning and launch was lost: %+v", s)
+	if len(s.Accounts) != 0 || s.Fees != 0 || s.Treasury != 140 {
+		t.Fatalf("direct payment between pinning and launch became a credit: %+v", s)
 	}
 	count := len(s.Events)
 	if err := p.Run(ctx); err != nil {

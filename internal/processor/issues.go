@@ -33,7 +33,7 @@ Your balance here updates as your coins move. To get started:
 - `+"`/withdraw 50`"+` — cash out 50 CC and take 49 CC back to ChrisCoin.
 - `+"`/balance`"+` — check your chips.
 
-You can also send CC directly to `+"`%s`"+` in [ChrisCoin](https://github.com/%s); the casino credits the actual payer after settlement. Each deposit and successful withdrawal costs 1 CC. A deposit of 1 CC leaves no casino credit. Wagers have no extra transfer fee.
+Deposits only count through the payment link from `+"`/deposit`"+`, and the chips go to whoever pays it. CC sent straight to `+"`%s`"+` in [ChrisCoin](https://github.com/%s) is kept as a tip for the house. Each deposit and successful withdrawal costs 1 CC. A deposit of 1 CC leaves no casino credit. Wagers have no extra transfer fee.
 
 This is your seat: the user who opened this issue owns the account. Only you can use it. Drop a fresh comment for each command and give the dealer a moment to respond. New accounts start at zero.
 

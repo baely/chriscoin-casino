@@ -175,8 +175,13 @@ func (p *Processor) Run(ctx context.Context) error {
 	}
 	// Discover attempted withdrawals before importing payments, so a payment and
 	// its recovered upstream issue association enter the ledger in the right order.
+	// Link deposit requests first too: only payments of linked casino
+	// requests are credited, and an import is never revisited.
 	if p.state.Initialized {
 		if err := p.recoverSubmissions(ctx); err != nil {
+			return err
+		}
+		if err := p.submitDeposits(ctx); err != nil {
 			return err
 		}
 	}

@@ -76,7 +76,7 @@ func TestTreasuryDepositRejectedBeforeCreatingRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := m.state(t)
-	if s.Events["comment-10"].Type != "rejected" || len(s.Deposits) != 0 || u.created != 0 || s.Accounts[house.ID].Available != 0 || s.Fees != 1 {
+	if s.Events["comment-10"].Type != "rejected" || s.Deposits["comment-10"] != nil || u.created != 0 || s.Accounts[house.ID].Available != 0 || s.Fees != 1 {
 		t.Fatal("treasury deposit created a request or changed funds")
 	}
 	if !hasReply(m, 2, "The treasury account cannot deposit into itself") {
@@ -138,22 +138,46 @@ func TestLostDepositRequestResponseRecoversOriginal(t *testing.T) {
 		t.Fatal("request not recovered")
 	}
 }
-func TestDepositWithoutTokenOffersDirectPayment(t *testing.T) {
+func TestDirectPaymentsAreTipsNotDeposits(t *testing.T) {
 	p, m, u := fixture(t)
 	p.Payer = nil
 	comment(m, 10, "/deposit 20", alice)
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if u.created != 0 || !hasReply(m, 1, "send CC directly") {
-		t.Fatal("missing direct-payment fallback")
+	if u.created != 0 || !hasReply(m, 1, "CC sent straight to the treasury is kept as a tip") {
+		t.Fatal("deposit reply does not warn that direct payments are tips")
 	}
+	// A direct send, an accepted offer, and a hand-made treasury request.
 	u.add(alice, "send", cc.Command{Action: "offer", Recipient: "house", Amount: 10}, 9, 0)
+	u.add(house, "request", cc.Command{Action: "request", Payer: "alice", Amount: 7}, 0, 500)
+	u.add(alice, "fulfill", cc.Command{Action: "fulfill", RequestID: "request-500"}, 0, 501)
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if m.state(t).Accounts[alice.ID].Available != 48 {
-		t.Fatal("direct deposit stopped working")
+	s := m.state(t)
+	if s.Accounts[alice.ID].Available != 39 || s.Fees != 1 || s.Treasury != 157 {
+		t.Fatalf("tip became a credit: available %d fees %d treasury %d", s.Accounts[alice.ID].Available, s.Fees, s.Treasury)
+	}
+}
+func TestRecoveredRequestIsLinkedBeforeItsPaymentImports(t *testing.T) {
+	p, m, u := fixture(t)
+	comment(m, 10, "/deposit 20", alice)
+	u.loseCreate = true
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if m.state(t).Deposits["comment-10"].UpstreamIssue != 0 {
+		t.Fatal("lost response was linked")
+	}
+	// The request settles and is paid before the casino recovers the link.
+	u.add(house, "request", cc.Command{Action: "request", Payer: "alice", Amount: 20}, 0, 101)
+	u.add(alice, "fulfill", cc.Command{Action: "fulfill", RequestID: "request-101"}, 0, 102)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s := m.state(t); s.Accounts[alice.ID].Available != 58 || u.created != 1 {
+		t.Fatalf("paid request lost its credit: available %d created %d", s.Accounts[alice.ID].Available, u.created)
 	}
 }
 func TestForeignDepositCannotCreatePaymentRequest(t *testing.T) {
@@ -162,7 +186,7 @@ func TestForeignDepositCannotCreatePaymentRequest(t *testing.T) {
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if u.created != 0 || len(m.state(t).Deposits) != 0 {
+	if u.created != 0 || m.state(t).Deposits["comment-10"] != nil {
 		t.Fatal("foreign comment created a payment request")
 	}
 }

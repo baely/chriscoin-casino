@@ -73,7 +73,7 @@ func (p *Processor) submitDeposits(ctx context.Context) error {
 }
 func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 	d := p.state.Deposits[e.ID]
-	direct := fmt.Sprintf("You can also send CC directly to the treasury in [ChrisCoin](https://github.com/%s).", p.Config.UpstreamRepository)
+	direct := "Only this payment link adds chips. CC sent straight to the treasury is kept as a tip for the house."
 	if d.UpstreamIssue == 0 {
 		if e.UserID == p.Config.TreasuryID {
 			return treasuryDepositMessage

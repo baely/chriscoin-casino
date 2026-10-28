@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-
-	cc "chriscoin-casino/internal/chriscoin"
 )
 
 func TestRepliesRefreshCurrentBalanceWithoutReplayingCommands(t *testing.T) {
@@ -34,10 +32,7 @@ func TestRepliesRefreshCurrentBalanceWithoutReplayingCommands(t *testing.T) {
 	if !hasReply(m, 1, "**7 CC up**") || !hasReply(m, 1, "**17 CC**") {
 		t.Fatal("winning round must distinguish the profit from the payout")
 	}
-	u.add(alice, "send", cc.Command{Action: "offer", Recipient: "house", Amount: 10}, house.ID, 0)
-	if err := p.Run(ctx); err != nil {
-		t.Fatal(err)
-	}
+	deposit(t, p, m, u, alice, 1, alice, 9001, 10)
 	checkBalance(55)
 	// Pending withdrawals are excluded from the playable balance, including
 	// in old wager replies and balance commands. Their ledger snapshots stay put.

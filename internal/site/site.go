@@ -5,12 +5,14 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
+	cc "chriscoin-casino/internal/chriscoin"
 	"chriscoin-casino/internal/game"
 	"chriscoin-casino/internal/ledger"
 )
@@ -19,6 +21,10 @@ import (
 var files embed.FS
 
 const boardSize = 30
+
+// TipAmount is the prefilled tip. Direct payments to the treasury are never
+// credited to a player, so a tip goes straight to the house.
+const TipAmount = 10
 
 type Round struct {
 	Login, Game, Bet, Outcome, Color string
@@ -42,6 +48,8 @@ type Cashout struct {
 }
 type Page struct {
 	Repository, Upstream, Commit, Updated string
+	TipURL                                template.URL
+	TipAmount                             int64
 	State                                 *ledger.State
 	Board                                 []Round
 	Players                               []Player
@@ -64,6 +72,13 @@ func Build(data []byte, dir, commit string) error {
 		return fmt.Errorf("ledger is not initialized")
 	}
 	p := Page{Repository: s.Repository, Upstream: s.Config.UpstreamRepository, Commit: commit, State: s}
+	if t := s.Accounts[s.Config.TreasuryID]; t != nil && t.Login != "" {
+		command := cc.Command{Action: "offer", Recipient: t.Login, Amount: TipAmount}
+		query := url.Values{"template": {"request.md"}, "title": {cc.RequestTitle(command)}, "body": {cc.RequestBody(command, "")}}
+		// Encode spaces as %20; a literal + is already escaped as %2B.
+		p.TipURL = template.URL("https://github.com/" + p.Upstream + "/issues/new?" + strings.ReplaceAll(query.Encode(), "+", "%20"))
+		p.TipAmount = TipAmount
+	}
 	if len(events) > 0 {
 		p.Updated = events[len(events)-1].At.UTC().Format("2 Jan 2006, 15:04 MST")
 	}
