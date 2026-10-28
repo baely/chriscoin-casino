@@ -1,0 +1,41 @@
+name: Casino ledger
+
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+# Every run drains unprocessed comments and recorded pending operations.
+concurrency:
+  group: casino-ledger
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  process:
+    if: github.event_name != 'issue_comment' || (!github.event.issue.pull_request && github.event.comment.user.type == 'User')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Process casino requests using trusted main code
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          CHRISCOIN_TOKEN: ${{ secrets.CHRISCOIN_TOKEN }}
+        run: go run ./cmd/casino process
