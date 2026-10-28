@@ -489,9 +489,6 @@ func (p *Processor) submitWithdrawals(ctx context.Context, up cc.Snapshot) error
 		if matches != 1 {
 			return fmt.Errorf("ambiguous upstream recipient username")
 		}
-		if p.state.FreeHouse() < 0 {
-			return fmt.Errorf("treasury shortfall; withdrawals paused")
-		}
 		if err := p.commit(ctx, ledger.Event{ID: "attempt-" + id, Type: "attempt", Ref: id}); err != nil {
 			return err
 		}

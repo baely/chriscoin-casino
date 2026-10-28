@@ -60,6 +60,7 @@ h1 {
 .house dt { font-size: 14px; color: var(--ivory-soft); }
 .house dd { margin: 2px 0 0; font-size: 28px; font-weight: 800; }
 .house .free dd { color: var(--brass); }
+.house .short dd { color: #e8a3a3; }
 
 h2 { margin: 0 0 4px; font-size: 22px; font-weight: 800; }
 .note { margin: 0 0 16px; color: var(--ivory-soft); font-size: 14px; }
@@ -170,7 +171,7 @@ footer p { margin: 0 0 4px; }
 <main class="wrap">
   {{- $s := .State}}
   <dl class="house" aria-label="House money">
-    <div class="free"><dt>House can still cover</dt><dd>{{cc $s.FreeHouse}} CC</dd></div>
+    <div class="free{{if lt $s.HouseBalance 0}} short{{end}}"><dt>House balance</dt><dd>{{cc $s.HouseBalance}} CC</dd></div>
     <div><dt>Owed to players</dt><dd>{{cc $s.Liabilities}} CC</dd></div>
     <div><dt>Treasury holds</dt><dd>{{cc $s.Treasury}} CC</dd></div>
     <div><dt>Rounds played</dt><dd>{{cc .Rounds}}</dd></div>

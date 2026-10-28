@@ -60,7 +60,7 @@ func run() error {
 			enc.SetIndent("", "  ")
 			return enc.Encode(s)
 		}
-		fmt.Printf("Validated %d events. Player liabilities: %d CC. House reserve after exposure: %d CC.\n", len(events), s.Liabilities(), s.FreeHouse())
+		fmt.Printf("Validated %d events. Player liabilities: %d CC. House balance: %d CC. Payable to withdrawals: %d CC.\n", len(events), s.Liabilities(), s.HouseBalance(), s.Payable())
 		return nil
 	case "site":
 		data, err := os.ReadFile(*ledgerPath)

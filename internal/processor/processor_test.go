@@ -545,7 +545,7 @@ func TestTreasuryFreezesAndCreditsPlayers(t *testing.T) {
 	comment(m, 10, "Thanks for playing!", house)
 	comment(m, 11, "/credit 5 sorry about the outage", gh.User{ID: 2, Login: "bob", Type: "User"})
 	comment(m, 12, "/credit 5 sorry about the outage", house)
-	comment(m, 13, "/credit 500 too generous", house)
+	comment(m, 13, "/credit 500", house)
 	comment(m, 14, "/freeze spam", house)
 	comment(m, 15, "/wager 10", alice)
 	comment(m, 16, "/withdraw 10", alice)
@@ -602,5 +602,25 @@ func TestRouletteAndSlots(t *testing.T) {
 		if !hasReply(m, 1, want) {
 			t.Fatalf("missing reply %q", want)
 		}
+	}
+}
+func TestBigWinsAreHonouredAndWithdrawalsNeedTreasuryFunds(t *testing.T) {
+	p, m, u := fixture(t) // alice 39, treasury 140
+	p.Sample = func(ledger.Event) (game.Draw, error) { return game.Draw{Pocket: 17}, nil }
+	comment(m, 10, "/roulette 39 17", alice)
+	comment(m, 11, "/withdraw 200", alice)
+	comment(m, 12, "/withdraw 100", alice)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := m.state(t)
+	if s.Wagers["comment-10"].Payout != 1404 || s.HouseBalance() != 140-1304-100 {
+		t.Fatalf("win not honoured: %+v house %d", s.Wagers["comment-10"], s.HouseBalance())
+	}
+	if s.Events["comment-11"].Type != "rejected" || s.Events["comment-12"].Type != "withdraw" || u.created != 1 || s.Accounts[alice.ID].Available != 1304 {
+		t.Fatalf("withdrawals: %s %s created=%d", s.Events["comment-11"].Type, s.Events["comment-12"].Type, u.created)
+	}
+	if !hasReply(m, 1, "The treasury can’t pay that cash-out right now") {
+		t.Fatal("missing treasury rejection reply")
 	}
 }

@@ -41,7 +41,7 @@ The treasury account can comment these on a player's account issue:
 /unfreeze
 ```
 
-`/credit N reason` moves N CC of house capital into the player's balance. It is refused if the free house reserve cannot cover it. `/freeze reason` pauses the player's wagers and `/deposit` requests. `/withdraw` and `/balance` keep working, so a frozen balance always stays the player's. Settled direct deposits are still credited. `/unfreeze` lifts the freeze. Every operator command is a public ledger event with its reason, and the player sees the reason in the reply. The treasury's comments without a slash on player issues are ignored, so the operator can chat with a player there. No command takes funds from a player or changes a wager result.
+`/credit N reason` adds N CC to the player's balance from the house, even if that takes the house balance negative. `/freeze reason` pauses the player's wagers and `/deposit` requests. `/withdraw` and `/balance` keep working, so a frozen balance always stays the player's. Settled direct deposits are still credited. `/unfreeze` lifts the freeze. Every operator command is a public ledger event with its reason, and the player sees the reason in the reply. The treasury's comments without a slash on player issues are ignored, so the operator can chat with a player there. No command takes funds from a player or changes a wager result.
 
 The treasury account cannot deposit into itself: a self-payment moves no CC and creates no player credit or deposit fee. Use a separate GitHub account to play when you also operate the treasury.
 
@@ -59,13 +59,15 @@ Roulette is single-zero European roulette, and every bet returns 36/37 of the st
 
 Slots spin three reels over one 20-stop strip: one 7️⃣, two ⭐, four 🔔, six 🍋, and seven 🍒. Three of a kind pays 50x for 7️⃣, 25x for ⭐, 12x for 🔔, 8x for 🍋, or 3x for 🍒. Exactly two 🍒 anywhere pay 2x. The exact expected return is 7597/8000 (about 95%), and about 32% of spins pay something.
 
-Payouts include the stake. Before any draw, the house reserves the worst-case payout: 35x the stake for a single-number roulette bet and 49x for slots. A bet the free house reserve cannot cover is rejected without moving coins. Draws are frozen on their bot branch exactly like `/wager` draws, so retries never reroll.
+Payouts include the stake. Draws are frozen on their bot branch exactly like `/wager` draws, so retries never reroll.
 
 ## Setup
 
 The checked-in configuration uses `cdlewis/ChrisCoin`, treasury account `baely` (GitHub ID `5674656`), and fixed starting commit `fc9a755a24bfedd28dd018a35f958d3be3a62aca`. ChrisCoin was pulled before selecting that commit. Its 18 ledger entries replay to 1,067 available CC and zero reserved CC for the treasury at the baseline.
 
-There is no configured maximum wager. A player can stake any positive whole amount covered by their available balance and the house reserve needed for the maximum payout. Exact integer accounting and overflow checks still apply.
+There is no maximum wager. A player can stake any positive whole amount covered by their available balance, and every bet is honoured in full whatever the house holds. The house balance (treasury minus everything owed to players) can go negative. Exact integer accounting and overflow checks still apply.
+
+Withdrawals are the only place the treasury's real funds are checked. A withdrawal is refused if the treasury's ChrisCoin balance cannot pay it after every withdrawal already queued, so cash-outs are paid first come, first served. A refused withdrawal leaves the balance untouched, and the player can try a smaller amount or try again later. If the treasury drops after a withdrawal was accepted, ChrisCoin rejects the payment and the casino returns the coins without a fee.
 
 Complete these GitHub steps:
 
@@ -74,7 +76,7 @@ Complete these GitHub steps:
 3. While signed in as `baely`, create a **personal access token (classic)** with the **`public_repo`** scope and an expiry you can rotate before it lapses. Store it in the casino repository under **Settings → Secrets and variables → Actions** as **`CHRISCOIN_TOKEN`**. ChrisCoin belongs to `cdlewis`; fine-grained PATs cannot write to an unrelated public repository in this access arrangement. This token creates deposit requests and outgoing withdrawal issues as `baely`. Do not commit the token to Git.
 4. Manually run **Casino ledger** from the repository's Actions tab. The worker initializes from the fixed starting commit and immediately imports any subsequent settled payments. Then verify a small deposit, wager, and withdrawal with two real GitHub accounts.
 
-No new ChrisCoin account is needed. The 1,067 CC already held by `baely` at the baseline becomes opening house capital; transfers recorded at or before that baseline do not become player deposits. Payments to the treasury after the baseline are imported even if they arrive before the casino's first run. Keep the personal account funded for casino liabilities and reserved wager exposure.
+No new ChrisCoin account is needed. The 1,067 CC already held by `baely` at the baseline becomes opening house capital; transfers recorded at or before that baseline do not become player deposits. Payments to the treasury after the baseline are imported even if they arrive before the casino's first run. Keep the personal account funded so players can cash out.
 
 The initial configuration is recorded in the ledger. Changing the treasury, upstream repository, or starting commit after initialization requires an explicit migration; the worker refuses a configuration mismatch. The ordinary `GITHUB_TOKEN` is supplied automatically by Actions and needs no manually created secret.
 
@@ -93,7 +95,7 @@ go run ./cmd/casino validate
 go run ./cmd/casino state
 ```
 
-`validate` replays the ledger and checks accounting. `state` prints the rebuilt account, wager, withdrawal, and reserve state. To verify an existing prefix is preserved:
+`validate` replays the ledger and checks accounting. `state` prints the rebuilt account, wager, withdrawal, and treasury state. To verify an existing prefix is preserved:
 
 ```sh
 go run ./cmd/casino validate --base-ledger /path/to/previous-events.jsonl
@@ -111,9 +113,9 @@ A `/deposit N` command first records the intent and creates a treasury-authored 
 
 Direct transfers remain an independent deposit path. Paying a request and sending a separate transfer are two deposits, each with its own fee. Because ChrisCoin allows another account to fulfill a named payer's request, credit always follows the authenticated actual payer.
 
-Deposits are credited only after upstream settlement. Upstream repository identity, the imported prefix hash, settled payer and recipient IDs, and unique payment IDs prevent forged receipts and repeated credits. Personal treasury spending can reduce backing; keep player liabilities and reserved house exposure funded. Fee totals are accounting records, not an automated transfer to a separate wallet.
+Deposits are credited only after upstream settlement. Upstream repository identity, the imported prefix hash, settled payer and recipient IDs, and unique payment IDs prevent forged receipts and repeated credits. Personal treasury spending reduces what players can withdraw. Fee totals are accounting records, not an automated transfer to a separate wallet.
 
-Wager acceptance reserves the player's stake and the house's maximum possible loss before sampling. Once the draw reaches its request branch, retries reuse it. A failed reply or a lost merge response cannot reroll a wager. Wagers are rejected when the house reserve cannot cover the maximum return.
+Wager acceptance locks the player's stake before sampling. Once the draw reaches its request branch, retries reuse it. A failed reply or a lost merge response cannot reroll a wager.
 
 Withdrawals lock the gross amount, record submission intent, and then create the upstream issue. Completion requires a matching canonical direct payment to the player's numeric ID. A terminal rejection recorded by the ChrisCoin bot releases the locked amount without charging a withdrawal fee. Merely closing an upstream issue is not sufficient proof of failure.
 

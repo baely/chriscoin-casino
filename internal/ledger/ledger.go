@@ -264,7 +264,22 @@ func (s *State) Exposure() int64 {
 	}
 	return n
 }
-func (s *State) FreeHouse() int64 { return s.Treasury - s.Liabilities() - s.Exposure() }
+
+// HouseBalance is what the treasury holds beyond everything owed to players.
+// Bets are honoured regardless, so it can go negative.
+func (s *State) HouseBalance() int64 { return s.Treasury - s.Liabilities() }
+
+// Payable is the treasury CC left after every queued withdrawal is paid.
+// Withdrawals are paid first come, first served from this amount.
+func (s *State) Payable() int64 {
+	n := s.Treasury
+	for _, w := range s.Withdrawals {
+		if !w.Paid && !w.Released {
+			n -= w.Event.Amount - 1
+		}
+	}
+	return n
+}
 func Replay(events []Event) (*State, error) {
 	s := &State{Accounts: map[int64]*Account{}, Events: map[string]Event{}, Wagers: map[string]*Wager{}, Withdrawals: map[string]*Withdrawal{}, Deposits: map[string]*Deposit{}, Imported: map[string]bool{}}
 	for i, e := range events {
@@ -426,13 +441,11 @@ func (s *State) apply(e Event) error {
 		if err != nil || bet != e.Bet {
 			return fmt.Errorf("invalid bet")
 		}
+		// Every bet is honoured whatever the house holds; the maximum payout
+		// only guards against integer overflow.
 		max, err := game.MaxPayout(e.Game, e.Bet, e.Amount)
 		if err != nil || max > MaxCoins {
 			return fmt.Errorf("invalid wager or insufficient funds")
-		}
-		// Reserve the house's worst-case loss before any draw is sampled.
-		if s.FreeHouse() < max-e.Amount {
-			return fmt.Errorf("house reserve is insufficient")
 		}
 		a.Available -= e.Amount
 		s.Wagers[e.ID] = &Wager{Event: e, Max: max}
@@ -454,8 +467,11 @@ func (s *State) apply(e Event) error {
 			return err
 		}
 		a := s.Accounts[e.UserID]
-		if e.Amount < 2 || e.Amount > a.Available || s.FreeHouse() < 0 {
-			return fmt.Errorf("invalid withdrawal, insufficient funds, or treasury shortfall")
+		if e.Amount < 2 || e.Amount > a.Available {
+			return fmt.Errorf("invalid withdrawal or insufficient funds")
+		}
+		if s.Payable() < e.Amount-1 {
+			return fmt.Errorf("treasury cannot pay this withdrawal")
 		}
 		a.Available -= e.Amount
 		s.Withdrawals[e.ID] = &Withdrawal{Event: e}
@@ -490,10 +506,6 @@ func (s *State) apply(e Event) error {
 		}
 		if e.Amount < 1 || e.Amount > MaxCoins || e.Reason == "" || a.Available > MaxCoins-e.Amount {
 			return fmt.Errorf("invalid credit")
-		}
-		// A credit moves house capital into a player liability; never overdraw it.
-		if s.FreeHouse() < e.Amount {
-			return fmt.Errorf("house reserve cannot cover the credit")
 		}
 		a.Available += e.Amount
 		s.Granted += e.Amount

@@ -45,7 +45,7 @@ func TestAccountingAndFees(t *testing.T) {
 	events := setup(t, 100, 40)
 	events = add(t, events, command(10, "wager", 10))
 	s, _ := Replay(events)
-	if s.Accounts[1].Available != 29 || s.FreeHouse() != 91 || s.Liabilities() != 39 {
+	if s.Accounts[1].Available != 29 || s.HouseBalance() != 101 || s.Liabilities() != 39 {
 		t.Fatalf("acceptance accounting: %+v", s)
 	}
 	events = add(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Gate: 50, Return: 17}, Amount: 17})
@@ -57,13 +57,13 @@ func TestAccountingAndFees(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Accounts[1].Available != 26 || s.Fees != 2 || s.Liabilities() != 26 || s.FreeHouse() != 95 || !s.Withdrawals["comment-11"].Paid {
+	if s.Accounts[1].Available != 26 || s.Fees != 2 || s.Liabilities() != 26 || s.HouseBalance() != 95 || !s.Withdrawals["comment-11"].Paid {
 		t.Fatalf("settled accounting: %+v", s)
 	}
 }
 func TestSafetyBoundaries(t *testing.T) {
 	events := setup(t, 0, 100)
-	mustFail(t, events, command(1, "wager", 10))
+	mustFail(t, events, command(1, "wager", 100))
 	e := command(2, "wager", 1)
 	e.UserID = 2
 	mustFail(t, events, e)
@@ -78,7 +78,7 @@ func TestSafetyBoundaries(t *testing.T) {
 	e.GameVersion = 2
 	mustFail(t, events, e)
 	events = add(t, events, command(7, "wager", 1))
-	mustFail(t, events, command(8, "wager", 1))
+	mustFail(t, events, command(8, "wager", 99))
 	events = add(t, events, Event{ID: "settle-7", Type: "settle", Ref: "comment-7", GameVersion: 1, Draw: game.Draw{Gate: 99, Return: 2}, Amount: 2})
 	mustFail(t, events, Event{ID: "settle-again", Type: "settle", Ref: "comment-7", GameVersion: 1, Draw: game.Draw{Gate: 99, Return: 2}, Amount: 2})
 	mustFail(t, events, Event{ID: "duplicate-deposit", Type: "sync", UpstreamCommit: strings.Repeat("c", 40), UpstreamHash: Hash(nil), UpstreamCount: 2, Treasury: 200, Credits: []Credit{{ID: "payment-1", UserID: 1, Amount: 100}}})
@@ -123,7 +123,7 @@ func TestDepositIntentDoesNotCreateFunds(t *testing.T) {
 	mustFail(t, events, bad)
 }
 
-func TestLargeWagerLimitedByBalanceAndBacking(t *testing.T) {
+func TestLargeWagerLimitedOnlyByBalance(t *testing.T) {
 	events := setup(t, 2_000_000_000, 2_000_000_001)
 	events = add(t, events, command(20, "wager", 2_000_000_000))
 	s, _ := Replay(events)
@@ -135,7 +135,8 @@ func TestLargeWagerLimitedByBalanceAndBacking(t *testing.T) {
 	if s.Accounts[1].Available != 4_000_000_000 {
 		t.Fatal("large payout failed")
 	}
-	mustFail(t, events, command(21, "wager", 4_000_000_000))
+	mustFail(t, events, command(21, "wager", 4_000_000_001))
+	add(t, events, command(21, "wager", 4_000_000_000))
 }
 func TestInitializationMustMatchConfiguredStartingCommit(t *testing.T) {
 	cfg := Config{UpstreamRepository: "test/coin", TreasuryID: 9, StartingCommit: strings.Repeat("a", 40)}
@@ -150,8 +151,6 @@ func admin(id int64, kind string, amount int64, reason string) Event {
 }
 func TestAdminCreditAndFreeze(t *testing.T) {
 	events := setup(t, 100, 40)
-	// House reserve is 100 + 40 - 39 = 101; a credit may not overdraw it.
-	mustFail(t, events, admin(10, "credit", 102, "too generous"))
 	mustFail(t, events, admin(10, "credit", 5, ""))
 	forged := admin(10, "credit", 5, "self-service")
 	forged.UserID = 1
@@ -164,7 +163,7 @@ func TestAdminCreditAndFreeze(t *testing.T) {
 	mustFail(t, events, wrongIssue)
 	events = add(t, events, admin(10, "credit", 5, "sorry about the outage"))
 	s, _ := Replay(events)
-	if s.Accounts[1].Available != 44 || s.Granted != 5 || s.FreeHouse() != 96 {
+	if s.Accounts[1].Available != 44 || s.Granted != 5 || s.HouseBalance() != 96 {
 		t.Fatalf("credit accounting: %+v", s)
 	}
 
@@ -197,31 +196,33 @@ func TestAdminCommandParsing(t *testing.T) {
 		}
 	}
 }
-func TestNamedGamesReserveTheirMaximumPayout(t *testing.T) {
-	events := setup(t, 100, 40) // house reserve 101
-	straight := command(10, "wager", 3)
+func TestBetsAreHonouredBeyondTheHouseBalance(t *testing.T) {
+	events := setup(t, 0, 40) // the house holds nothing beyond player funds
+	straight := command(10, "wager", 39)
 	straight.Game, straight.Bet = game.Roulette, "17"
-	mustFail(t, events, straight) // needs 35 x 3 = 105
-	straight.Amount = 2
 	events = add(t, events, straight)
 	s, _ := Replay(events)
-	if s.Exposure() != 70 || s.FreeHouse() != 31 || s.Accounts[1].Available != 37 {
-		t.Fatalf("roulette reserve: exposure %d free %d", s.Exposure(), s.FreeHouse())
+	if s.Exposure() != 35*39 || s.Accounts[1].Available != 0 {
+		t.Fatalf("roulette exposure %d", s.Exposure())
 	}
 	mustFail(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Pocket: 17}, Amount: 70})
-	events = add(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Pocket: 17}, Amount: 72})
+	events = add(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Pocket: 17}, Amount: 36 * 39})
 	s, _ = Replay(events)
-	if s.Accounts[1].Available != 109 || s.Exposure() != 0 {
-		t.Fatalf("roulette settle: %+v", s.Accounts[1])
+	if s.Accounts[1].Available != 1404 || s.HouseBalance() != 40-1404 || s.Exposure() != 0 {
+		t.Fatalf("roulette win: %d, house %d", s.Accounts[1].Available, s.HouseBalance())
 	}
-	spin := command(11, "wager", 1)
+	spin := command(11, "wager", 1000)
 	spin.Game = game.Slots
-	mustFail(t, events, spin) // the win left 31 CC free; a slots stake reserves 49x
-	if s, _ = Replay(add(t, setup(t, 100, 40), spin)); s.Exposure() != 49 {
+	events = add(t, events, spin)
+	if s, _ = Replay(events); s.Exposure() != 49_000 {
 		t.Fatalf("slots exposure %d", s.Exposure())
 	}
+	events = add(t, events, admin(12, "credit", 500, "house is broke, have some anyway"))
+	if s, _ = Replay(events); s.Accounts[1].Available != 904 {
+		t.Fatalf("credit beyond the house balance: %d", s.Accounts[1].Available)
+	}
 	for _, bad := range []Event{{Game: game.Roulette, Bet: "RED"}, {Game: game.Roulette}, {Game: game.Slots, Bet: "red"}, {Game: "poker"}} {
-		e := command(12, "wager", 1)
+		e := command(13, "wager", 1)
 		e.Game, e.Bet = bad.Game, bad.Bet
 		mustFail(t, events, e)
 	}
@@ -238,4 +239,16 @@ func TestPlayParsing(t *testing.T) {
 			t.Fatalf("accepted %q", body)
 		}
 	}
+}
+func TestWithdrawalsNeedTreasuryFundsFirstComeFirstServed(t *testing.T) {
+	events := setup(t, 0, 40) // alice 39, treasury 40
+	events = add(t, events, admin(10, "credit", 100, "jackpot bonus"))
+	mustFail(t, events, command(11, "withdraw", 42))     // pays 41 > 40 held
+	events = add(t, events, command(11, "withdraw", 31)) // pays 30 of 40
+	s, _ := Replay(events)
+	if s.Payable() != 10 || s.HouseBalance() != 40-139 {
+		t.Fatalf("payable %d house %d", s.Payable(), s.HouseBalance())
+	}
+	mustFail(t, events, command(12, "withdraw", 12))
+	add(t, events, command(12, "withdraw", 11))
 }

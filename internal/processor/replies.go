@@ -83,8 +83,10 @@ func rejectionResult(e ledger.Event) string {
 		return "This account is frozen by the operator. Wagers and deposit requests are paused; `/withdraw` and `/balance` still work. Your coins haven’t moved."
 	case "house reserve cannot cover the credit":
 		return "The house reserve can’t cover that credit right now. No coins moved."
-	case "invalid withdrawal, insufficient funds, or treasury shortfall":
-		return "That cash-out didn’t go through. It needs to be at least 2 CC and covered by your balance and the treasury. Your coins haven’t moved."
+	case "treasury cannot pay this withdrawal":
+		return "The treasury can’t pay that cash-out right now. Your coins haven’t moved and your balance is still yours; try a smaller amount or try again later."
+	case "invalid withdrawal or insufficient funds", "invalid withdrawal, insufficient funds, or treasury shortfall":
+		return "That cash-out didn’t go through. It needs to be at least 2 CC and no more than your balance. Your coins haven’t moved."
 	default:
 		return "Hold up! " + reason
 	}

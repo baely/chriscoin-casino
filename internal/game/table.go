@@ -129,8 +129,8 @@ func multiplier(name, bet string) (int64, error) {
 	return 2, nil
 }
 
-// MaxPayout is the largest possible return, including the stake, which the
-// house must reserve before the draw.
+// MaxPayout is the largest possible return, including the stake. It guards
+// payouts against overflow and measures the house's exposure on open bets.
 func MaxPayout(name, bet string, stake int64) (int64, error) {
 	m, err := multiplier(name, bet)
 	if err != nil {
