@@ -1,6 +1,6 @@
 # ChrisCoin
 
-The upstream ledger reader and GitHub API client are adapted from [cdlewis/ChrisCoin](https://github.com/cdlewis/ChrisCoin), commit `fc9a755a24bfedd28dd018a35f958d3be3a62aca`.
+The upstream ledger reader, GitHub API client, and request formatting are adapted from [cdlewis/ChrisCoin](https://github.com/cdlewis/ChrisCoin), commit `fc9a755a24bfedd28dd018a35f958d3be3a62aca`.
 
 MIT License
 

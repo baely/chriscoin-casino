@@ -107,11 +107,11 @@ func (u Snapshot) Sync(s *ledger.State, commit string) (ledger.Event, error) {
 }
 
 func WithdrawalBody(repository, id, recipient string, amount int64) string {
-	return fmt.Sprintf("Casino withdrawal.\n\n<!-- casino-withdrawal:%s:%s -->\n\n```chriscoin\n{\"action\":\"offer\",\"recipient\":%q,\"amount\":%d}\n```\n", repository, id, recipient, amount)
+	return RequestBody(Command{Action: "offer", Recipient: recipient, Amount: amount}, WithdrawalMarker(repository, id))
 }
 func WithdrawalMarker(repository, id string) string {
-	return "<!-- casino-withdrawal:" + repository + ":" + id + " -->"
+	return RequestMarker(repository, "withdrawal", id)
 }
 func Marked(body, repository, id string) bool {
-	return strings.Contains(body, WithdrawalMarker(repository, id))
+	return strings.Contains(body, WithdrawalMarker(repository, id)) || strings.Contains(body, "<!-- casino-withdrawal:"+repository+":"+id+" -->")
 }

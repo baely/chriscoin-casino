@@ -473,7 +473,7 @@ func (p *Processor) submitWithdrawals(ctx context.Context, up cc.Snapshot) error
 		if err := p.commit(ctx, ledger.Event{ID: "attempt-" + id, Type: "attempt", Ref: id}); err != nil {
 			return err
 		}
-		issue, err := p.Payer.CreateIssue(ctx, "Casino withdrawal "+id, cc.WithdrawalBody(p.Repository, id, a.Login, w.Event.Amount-1))
+		issue, err := p.Payer.CreateIssue(ctx, cc.RequestTitle(cc.Command{Action: "offer", Recipient: a.Login, Amount: w.Event.Amount - 1}), cc.WithdrawalBody(p.Repository, id, a.Login, w.Event.Amount-1))
 		if err != nil {
 			log.Printf("Submission of %s is uncertain: %v. Recovery will inspect upstream; it will not resend.", id, err)
 			continue

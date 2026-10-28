@@ -512,3 +512,31 @@ func TestFirstRunDoesNotCreditPaymentsBeforeBaseline(t *testing.T) {
 		t.Fatal("historical transfer became player credit")
 	}
 }
+
+func TestWithdrawalUsesUpstreamFormat(t *testing.T) {
+	p, m, u := fixture(t)
+	comment(m, 10, "/withdraw 20", alice)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	issue := u.issues[0]
+	if issue.Title != "ChrisCoin: offer 19 to alice" || strings.Contains(strings.ToLower(issue.Body), "casino") || !strings.HasPrefix(issue.Body, "```chriscoin\n") {
+		t.Fatalf("unexpected upstream issue: %+v", issue)
+	}
+}
+
+func TestWithdrawalRecoveryAcceptsLegacyReference(t *testing.T) {
+	p, m, u := fixture(t)
+	comment(m, 10, "/withdraw 20", alice)
+	u.loseCreate = true
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	u.issues[0].Body = "<!-- casino-withdrawal:" + p.Repository + ":comment-10 -->\n\n```chriscoin\n{\"action\":\"offer\",\"recipient\":\"alice\",\"amount\":19}\n```\n"
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if u.created != 1 || m.state(t).Withdrawals["comment-10"].UpstreamIssue != 101 {
+		t.Fatal("legacy withdrawal was not recovered")
+	}
+}

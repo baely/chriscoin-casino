@@ -2,7 +2,6 @@ package processor
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
@@ -13,7 +12,7 @@ import (
 )
 
 func depositMarker(repository, id string) string {
-	return "<!-- casino-deposit:" + repository + ":" + id + " -->"
+	return cc.RequestMarker(repository, "deposit", id)
 }
 func (p *Processor) submitDeposits(ctx context.Context) error {
 	if p.Payer == nil {
@@ -45,19 +44,16 @@ func (p *Processor) submitDeposits(ctx context.Context) error {
 		number := 0
 		marker := depositMarker(p.Repository, id)
 		for _, issue := range issues {
-			if issue.User.ID == me.ID && issue.User.Type == "User" && containsMarker(issue.Body, marker) {
+			if issue.User.ID == me.ID && issue.User.Type == "User" && (containsMarker(issue.Body, marker) || containsMarker(issue.Body, "<!-- casino-deposit:"+p.Repository+":"+id+" -->")) {
 				if number == 0 || issue.Number < number {
 					number = issue.Number
 				}
 			}
 		}
 		if number == 0 {
-			command, err := json.Marshal(cc.Command{Action: "request", Payer: d.Event.Login, Amount: d.Event.Amount})
-			if err != nil {
-				return err
-			}
-			body := fmt.Sprintf("Casino deposit request. The payer receives the casino credit after settlement.\n\n%s\n\n```chriscoin\n%s\n```\n", marker, command)
-			issue, err := p.Payer.CreateIssue(ctx, "Casino deposit "+id, body)
+			command := cc.Command{Action: "request", Payer: d.Event.Login, Amount: d.Event.Amount}
+			body := cc.RequestBody(command, marker)
+			issue, err := p.Payer.CreateIssue(ctx, cc.RequestTitle(command), body)
 			if err != nil {
 				log.Printf("Deposit request %s could not be confirmed: %v; recovery will look for the existing request before creating another", id, err)
 				continue
@@ -94,9 +90,9 @@ func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 	case "cancelled":
 		return "This deposit request was cancelled. Submit a new /deposit command for another request. " + direct
 	case "open":
-		command, _ := json.Marshal(cc.Command{Action: "fulfill", RequestID: requestID})
-		body := "```chriscoin\n" + string(command) + "\n```\n"
-		q := url.Values{"template": {"request.md"}, "title": {"Pay casino deposit " + requestID}, "body": {body}}
+		command := cc.Command{Action: "fulfill", RequestID: requestID}
+		body := cc.RequestBody(command, "")
+		q := url.Values{"template": {"request.md"}, "title": {cc.RequestTitle(command)}, "body": {body}}
 		return fmt.Sprintf("[Pay %d CC](https://github.com/%s/issues/new?%s) to receive %d CC casino credit after settlement (1 CC fee). Submit the prefilled ChrisCoin issue while signed in. Reusing this same request cannot pay it twice.\n\n[View the payment request](%s).", e.Amount, p.Config.UpstreamRepository, q.Encode(), e.Amount-1, issueURL)
 	default:
 		return "Deposit request status is unavailable. " + direct
