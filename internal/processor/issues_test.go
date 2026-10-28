@@ -123,7 +123,7 @@ func TestWelcomeContainsCommandsAndOwnershipRules(t *testing.T) {
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Welcome!", "/deposit 100", "/wager 10", "/withdraw 50", "/balance", "1 CC", "5%", "Only you", "close this issue"} {
+	for _, text := range []string{"Welcome!", "/deposit 100", "/wager 10", "/withdraw 50", "/balance", "1 CC", "Only you", "close this issue"} {
 		if !hasReply(m, 1, text) {
 			t.Errorf("welcome missing %q", text)
 		}

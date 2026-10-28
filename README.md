@@ -19,7 +19,7 @@ Comment on your account issue:
 
 The issue opener is the account owner, identified by their numeric GitHub ID. The casino does not assign issues or create account issues on a player's behalf. Assignees, labels, titles, and body text do not determine the user. Each user has one permanent account issue. Opening a second issue closes it with a link to the original and reopens the original if needed. Closing your account issue does not delete it or move its balance. The worker only reopens it when handling a new duplicate issue; scheduled recovery, comments, deposits, and reopening an already handled duplicate do not reopen the original.
 
-Comments on another player's issue are rejected with a link to the commenter's own issue, or a link to open one. This applies to plain comments as well as commands. Commands on duplicate issues redirect to the original account. Each original issue receives an idempotent welcome message explaining commands, fees, odds, and ownership.
+Comments on another player's issue are rejected with a link to the commenter's own issue, or a link to open one. This applies to plain comments as well as commands. Commands on duplicate issues redirect to the original account. Each original issue receives an idempotent welcome message explaining commands, fees, payouts, and ownership.
 
 Only that account's numeric GitHub user ID can submit its commands. Renaming your GitHub account does not transfer ownership. Each comment executes at most once; submit a new comment for another wager. Edited comments are rejected unless a command was already frozen on its bot request branch. An accepted wager remains binding after its comment is edited or deleted.
 
@@ -31,7 +31,7 @@ Only that account's numeric GitHub user ID can submit its commands. Renaming you
 
 Withdrawals require at least 2 CC. A 1 CC deposit is entirely consumed by the deposit fee. Casino accounts start at zero; ChrisCoin's upstream starting allowance is never duplicated inside the casino.
 
-For each wager there is a 5% chance of returning zero. Otherwise, the return is a uniform whole number from zero through twice the stake. The expected return is exactly 95% of the stake, giving a 5% expected house edge. Go's `crypto/rand` supplies unbiased bounded draws. Public records expose settlement arithmetic and history; they do not independently prove the operator generated the randomness honestly.
+Wagers return whole CC between zero and twice the stake, including the stake. Go's `crypto/rand` generates the draw; the ledger records each accepted wager and its settlement.
 
 ## Setup
 

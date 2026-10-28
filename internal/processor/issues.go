@@ -29,7 +29,7 @@ Comment here to interact:
 - `+"`/withdraw 50`"+` — withdraw 50 CC from your casino balance and receive 49 CC in ChrisCoin.
 - `+"`/balance`"+` — check your available balance.
 
-You can also send CC directly to `+"`%s`"+` in [ChrisCoin](https://github.com/%s); the casino credits the actual payer after settlement. Each deposit and successful withdrawal costs 1 CC. A deposit of 1 CC leaves no casino credit. Wagers have a 5%% expected house edge and no extra transfer fee.
+You can also send CC directly to `+"`%s`"+` in [ChrisCoin](https://github.com/%s); the casino credits the actual payer after settlement. Each deposit and successful withdrawal costs 1 CC. A deposit of 1 CC leaves no casino credit. Wagers have no extra transfer fee.
 
 The user who opened this issue owns this account. Only you can use it. Use a new comment for each command; results arrive asynchronously. Casino accounts start at zero.
 
