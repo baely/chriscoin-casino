@@ -92,7 +92,39 @@ func rejectionResult(e ledger.Event) string {
 	}
 }
 
+// balanceLine ends command replies on the player's own account issue.
+func balanceLine(n int64) string {
+	return fmt.Sprintf("\n\n**Balance: %d CC** · available to play", n)
+}
+
+// shownBalances replays the ledger to find the balance each command reply
+// shows: the account's balance just before its next command, or now for the
+// latest reply. Old replies therefore never change once a newer one exists.
+func shownBalances(events []ledger.Event) (map[string]int64, error) {
+	shown := map[string]int64{}
+	latest := map[int64]string{} // account ID -> its latest reply
+	_, err := ledger.ReplayEach(events, func(e ledger.Event, s *ledger.State) {
+		if e.Comment != 0 {
+			id := e.UserID
+			if e.Target != 0 {
+				id = e.Target
+			}
+			if a := s.Accounts[id]; a != nil && a.Issue == e.Issue {
+				latest[id] = e.ID
+			}
+		}
+		for id, reply := range latest {
+			shown[reply] = s.Accounts[id].Available
+		}
+	})
+	return shown, err
+}
+
 func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
+	shown, err := shownBalances(p.events)
+	if err != nil {
+		return err
+	}
 	for _, e := range p.events {
 		if e.Comment == 0 {
 			continue
@@ -133,12 +165,8 @@ func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
 		default:
 			continue
 		}
-		owner := e.UserID
-		if e.Target != 0 {
-			owner = e.Target
-		}
-		if a := p.state.Accounts[owner]; a != nil && a.Issue == e.Issue {
-			message += fmt.Sprintf("\n\n**Balance: %d CC** · available to play", a.Available)
+		if n, ok := shown[e.ID]; ok {
+			message += balanceLine(n)
 		}
 		if err := p.reply(ctx, e.Issue, e.ID, message); err != nil {
 			return err

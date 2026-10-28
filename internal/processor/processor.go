@@ -511,6 +511,7 @@ func (p *Processor) submitWithdrawals(ctx context.Context, up cc.Snapshot) error
 	}
 	return nil
 }
+
 func (p *Processor) reply(ctx context.Context, issue int, id, message string) error {
 	marker := "<!-- casino-result:" + id + " -->"
 	body := message + "\n\n" + marker

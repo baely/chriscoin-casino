@@ -227,13 +227,18 @@ func deposit(t *testing.T, p *Processor, m *memory, u *upstream, owner gh.User, 
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
-	number := m.state(t).Deposits[fmt.Sprintf("comment-%d", id)].UpstreamIssue
-	u.add(house, "request", cc.Command{Action: "request", Payer: owner.Login, Amount: amount}, 0, number)
-	u.add(payer, "fulfill", cc.Command{Action: "fulfill", RequestID: fmt.Sprintf("request-%d", number)}, 0, number+1)
+	payDeposit(u, owner, payer, m.state(t).Deposits[fmt.Sprintf("comment-%d", id)].UpstreamIssue, amount)
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
 	u.created, u.issues = created, u.issues[:issues]
+}
+
+// payDeposit settles the casino request on upstream issue number, then has
+// payer pay it on the next issue.
+func payDeposit(u *upstream, owner, payer gh.User, number int, amount int64) {
+	u.add(house, "request", cc.Command{Action: "request", Payer: owner.Login, Amount: amount}, 0, number)
+	u.add(payer, "fulfill", cc.Command{Action: "fulfill", RequestID: fmt.Sprintf("request-%d", number)}, 0, number+1)
 }
 func comment(m *memory, id int64, body string, user gh.User) {
 	m.comments[1] = append(m.comments[1], gh.Comment{ID: id, Body: body, User: user, CreatedAt: testNow, UpdatedAt: testNow})

@@ -280,7 +280,11 @@ func (s *State) Payable() int64 {
 	}
 	return n
 }
-func Replay(events []Event) (*State, error) {
+func Replay(events []Event) (*State, error) { return ReplayEach(events, nil) }
+
+// ReplayEach is Replay that calls after, if set, with the state following
+// each event. The state is live; after must not modify or retain it.
+func ReplayEach(events []Event, after func(Event, *State)) (*State, error) {
 	s := &State{Accounts: map[int64]*Account{}, Events: map[string]Event{}, Wagers: map[string]*Wager{}, Withdrawals: map[string]*Withdrawal{}, Deposits: map[string]*Deposit{}, Imported: map[string]bool{}}
 	for i, e := range events {
 		if e.Version != 1 || e.Sequence != i+1 || e.ID == "" || e.At.IsZero() {
@@ -295,6 +299,9 @@ func Replay(events []Event) (*State, error) {
 		s.Events[e.ID] = e
 		if err := s.bounds(); err != nil {
 			return nil, err
+		}
+		if after != nil {
+			after(e, s)
 		}
 	}
 	return s, nil
