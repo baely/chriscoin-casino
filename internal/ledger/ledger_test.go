@@ -145,3 +145,97 @@ func TestInitializationMustMatchConfiguredStartingCommit(t *testing.T) {
 		t.Fatal("mutable ref accepted as starting commit")
 	}
 }
+func admin(id int64, kind string, amount int64, reason string) Event {
+	return Event{ID: fmt.Sprintf("comment-%d", id), Type: kind, UserID: 9, Target: 1, Issue: 1, Comment: id, BodyHash: Hash([]byte("test")), Amount: amount, Reason: reason}
+}
+func TestAdminCreditAndFreeze(t *testing.T) {
+	events := setup(t, 100, 40)
+	// House reserve is 100 + 40 - 39 = 101; a credit may not overdraw it.
+	mustFail(t, events, admin(10, "credit", 102, "too generous"))
+	mustFail(t, events, admin(10, "credit", 5, ""))
+	forged := admin(10, "credit", 5, "self-service")
+	forged.UserID = 1
+	mustFail(t, events, forged)
+	treasury := admin(10, "credit", 5, "self-dealing")
+	treasury.Target = 9
+	mustFail(t, events, treasury)
+	wrongIssue := admin(10, "credit", 5, "wrong thread")
+	wrongIssue.Issue = 2
+	mustFail(t, events, wrongIssue)
+	events = add(t, events, admin(10, "credit", 5, "sorry about the outage"))
+	s, _ := Replay(events)
+	if s.Accounts[1].Available != 44 || s.Granted != 5 || s.FreeHouse() != 96 {
+		t.Fatalf("credit accounting: %+v", s)
+	}
+
+	mustFail(t, events, admin(11, "unfreeze", 0, ""))
+	mustFail(t, events, admin(11, "freeze", 0, ""))
+	events = add(t, events, admin(11, "freeze", 0, "spam"))
+	mustFail(t, events, admin(12, "freeze", 0, "again"))
+	mustFail(t, events, command(12, "wager", 5))
+	mustFail(t, events, command(12, "deposit", 5))
+	events = add(t, events, command(12, "withdraw", 5))
+	events = add(t, events, command(13, "balance", 39))
+	events = add(t, events, admin(14, "unfreeze", 0, ""))
+	add(t, events, command(15, "wager", 5))
+}
+func TestAdminCommandParsing(t *testing.T) {
+	for body, want := range map[string]string{
+		"/credit 5 sorry about the outage": "credit 5 sorry about the outage",
+		"/freeze  spam\nlinks":             "freeze 0 spam links",
+		"/unfreeze":                        "unfreeze 0 ",
+		"/wager 5":                         " 0 ",
+	} {
+		command, n, reason, err := AdminCommand(body)
+		if err != nil || fmt.Sprintf("%s %d %s", command, n, reason) != want {
+			t.Fatalf("%q parsed as %q %d %q %v", body, command, n, reason, err)
+		}
+	}
+	for _, body := range []string{"/credit 5", "/credit five reasons", "/credit 0 nothing", "/freeze", "/credit 5 " + strings.Repeat("x", 201)} {
+		if command, _, _, err := AdminCommand(body); command == "" || err == nil {
+			t.Fatalf("accepted %q", body)
+		}
+	}
+}
+func TestNamedGamesReserveTheirMaximumPayout(t *testing.T) {
+	events := setup(t, 100, 40) // house reserve 101
+	straight := command(10, "wager", 3)
+	straight.Game, straight.Bet = game.Roulette, "17"
+	mustFail(t, events, straight) // needs 35 x 3 = 105
+	straight.Amount = 2
+	events = add(t, events, straight)
+	s, _ := Replay(events)
+	if s.Exposure() != 70 || s.FreeHouse() != 31 || s.Accounts[1].Available != 37 {
+		t.Fatalf("roulette reserve: exposure %d free %d", s.Exposure(), s.FreeHouse())
+	}
+	mustFail(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Pocket: 17}, Amount: 70})
+	events = add(t, events, Event{ID: "settle-10", Type: "settle", Ref: "comment-10", GameVersion: 1, Draw: game.Draw{Pocket: 17}, Amount: 72})
+	s, _ = Replay(events)
+	if s.Accounts[1].Available != 109 || s.Exposure() != 0 {
+		t.Fatalf("roulette settle: %+v", s.Accounts[1])
+	}
+	spin := command(11, "wager", 1)
+	spin.Game = game.Slots
+	mustFail(t, events, spin) // the win left 31 CC free; a slots stake reserves 49x
+	if s, _ = Replay(add(t, setup(t, 100, 40), spin)); s.Exposure() != 49 {
+		t.Fatalf("slots exposure %d", s.Exposure())
+	}
+	for _, bad := range []Event{{Game: game.Roulette, Bet: "RED"}, {Game: game.Roulette}, {Game: game.Slots, Bet: "red"}, {Game: "poker"}} {
+		e := command(12, "wager", 1)
+		e.Game, e.Bet = bad.Game, bad.Bet
+		mustFail(t, events, e)
+	}
+}
+func TestPlayParsing(t *testing.T) {
+	for body, want := range map[string]string{"/roulette 10 RED": "roulette red 10", "/roulette 5 19-36": "roulette high 5", "/slots 3": "slots  3", "/wager 3": "  0"} {
+		name, bet, n, err := Play(body)
+		if err != nil || fmt.Sprintf("%s %s %d", name, bet, n) != want {
+			t.Fatalf("%q parsed as %q %q %d %v", body, name, bet, n, err)
+		}
+	}
+	for _, body := range []string{"/roulette 10", "/roulette red 10", "/roulette 10 37", "/slots", "/slots 10 red", "/slots 0"} {
+		if name, _, _, err := Play(body); name == "" || err == nil {
+			t.Fatalf("accepted %q", body)
+		}
+	}
+}

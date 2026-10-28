@@ -55,12 +55,15 @@ type Event struct {
 	Login          string    `json:"login,omitempty"`
 	Issue          int       `json:"issue,omitempty"`
 	TargetIssue    int       `json:"target_issue,omitempty"`
+	Target         int64     `json:"target,omitempty"`
 	Comment        int64     `json:"comment,omitempty"`
 	BodyHash       string    `json:"body_hash,omitempty"`
 	Amount         int64     `json:"amount,omitempty"`
 	Ref            string    `json:"ref,omitempty"`
 	Reason         string    `json:"reason,omitempty"`
 	GameVersion    int       `json:"game_version,omitempty"`
+	Game           string    `json:"game,omitempty"`
+	Bet            string    `json:"bet,omitempty"`
 	Draw           game.Draw `json:"draw,omitempty"`
 	Config         *Config   `json:"config,omitempty"`
 	Repository     string    `json:"repository,omitempty"`
@@ -76,11 +79,14 @@ type Account struct {
 	Login     string `json:"login"`
 	Issue     int    `json:"issue"`
 	Available int64  `json:"available"`
+	Frozen    bool   `json:"frozen,omitempty"`
 }
 type Wager struct {
-	Event   Event `json:"event"`
-	Settled bool  `json:"settled"`
-	Payout  int64 `json:"payout"`
+	Event   Event     `json:"event"`
+	Settled bool      `json:"settled"`
+	Payout  int64     `json:"payout"`
+	Max     int64     `json:"max"`
+	Draw    game.Draw `json:"draw"`
 }
 type Deposit struct {
 	Event         Event `json:"event"`
@@ -108,6 +114,7 @@ type State struct {
 	UpstreamCount  int                    `json:"upstream_count"`
 	Treasury       int64                  `json:"treasury"`
 	Fees           int64                  `json:"fees"`
+	Granted        int64                  `json:"granted"`
 }
 
 func Hash(data []byte) string { h := sha256.Sum256(data); return hex.EncodeToString(h[:]) }
@@ -160,6 +167,67 @@ func Command(body string) (string, int64, error) {
 	}
 	return strings.TrimPrefix(f[0], "/"), n, nil
 }
+
+// AdminCommand parses treasury commands. An empty command means the body is
+// not an admin command; an error means it is one with invalid arguments.
+func AdminCommand(body string) (string, int64, string, error) {
+	f := strings.Fields(strings.TrimSpace(body))
+	if len(f) == 0 || (f[0] != "/freeze" && f[0] != "/unfreeze" && f[0] != "/credit") {
+		return "", 0, "", nil
+	}
+	command := strings.TrimPrefix(f[0], "/")
+	rest := f[1:]
+	var n int64
+	if command == "credit" {
+		if len(rest) == 0 || !regexp.MustCompile(`^[1-9][0-9]*$`).MatchString(rest[0]) {
+			return command, 0, "", fmt.Errorf("use /credit N reason with a positive whole amount")
+		}
+		var err error
+		n, err = strconv.ParseInt(rest[0], 10, 64)
+		if err != nil || n > MaxCoins {
+			return command, 0, "", fmt.Errorf("amount outside supported range")
+		}
+		rest = rest[1:]
+	}
+	reason := strings.Join(rest, " ")
+	if reason == "" && command != "unfreeze" {
+		return command, 0, "", fmt.Errorf("/%s needs a reason; it is shown to the player and kept in the ledger", command)
+	}
+	if len([]rune(reason)) > 200 || strings.ContainsFunc(reason, func(r rune) bool { return r < 32 || r == 127 }) {
+		return command, 0, "", fmt.Errorf("keep the reason to 200 plain characters")
+	}
+	return command, n, reason, nil
+}
+
+// Play parses a named game command. An empty game means the body is not one.
+func Play(body string) (string, string, int64, error) {
+	f := strings.Fields(strings.TrimSpace(body))
+	if len(f) == 0 || (f[0] != "/roulette" && f[0] != "/slots") {
+		return "", "", 0, nil
+	}
+	name := strings.TrimPrefix(f[0], "/")
+	usage := "use /roulette N bet, for example /roulette 10 red"
+	if name == game.Slots {
+		usage = "use /slots N, for example /slots 10"
+	}
+	if (name == game.Roulette && len(f) != 3) || (name == game.Slots && len(f) != 2) {
+		return name, "", 0, fmt.Errorf("%s", usage)
+	}
+	if !regexp.MustCompile(`^[1-9][0-9]*$`).MatchString(f[1]) {
+		return name, "", 0, fmt.Errorf("amount must be a positive whole number")
+	}
+	n, err := strconv.ParseInt(f[1], 10, 64)
+	if err != nil || n > MaxCoins {
+		return name, "", 0, fmt.Errorf("amount outside supported range")
+	}
+	bet := ""
+	if len(f) == 3 {
+		if bet, err = game.NormalizeBet(name, f[2]); err != nil {
+			return name, "", 0, err
+		}
+	}
+	return name, bet, n, nil
+}
 func (s *State) account(id int64, login string) *Account {
 	a := s.Accounts[id]
 	if a == nil {
@@ -185,11 +253,13 @@ func (s *State) Liabilities() int64 {
 	}
 	return n
 }
+
+// Exposure is the house's possible loss on open wagers, beyond their stakes.
 func (s *State) Exposure() int64 {
 	var n int64
 	for _, w := range s.Wagers {
 		if !w.Settled {
-			n += w.Event.Amount
+			n += w.Max - w.Event.Amount
 		}
 	}
 	return n
@@ -250,6 +320,15 @@ func (s *State) owner(e Event) error {
 	}
 	return nil
 }
+
+// admin checks that the treasury issued the command on the target's own issue.
+func (s *State) admin(e Event) (*Account, error) {
+	t := s.Accounts[e.Target]
+	if e.UserID != s.Config.TreasuryID || e.Target == s.Config.TreasuryID || t == nil || t.Issue <= 0 || t.Issue != e.Issue || e.Comment <= 0 || len(e.BodyHash) != 64 || e.ID != fmt.Sprintf("comment-%d", e.Comment) {
+		return nil, fmt.Errorf("admin command provenance does not match account")
+	}
+	return t, nil
+}
 func (s *State) apply(e Event) error {
 	if e.Type == "init" {
 		if s.Initialized || e.Config == nil || e.Repository == "" || e.UpstreamCommit != e.Config.StartingCommit {
@@ -301,6 +380,9 @@ func (s *State) apply(e Event) error {
 		if e.Amount < 1 || e.Amount > MaxCoins {
 			return fmt.Errorf("invalid deposit amount")
 		}
+		if s.Accounts[e.UserID].Frozen {
+			return fmt.Errorf("account is frozen")
+		}
 		s.Deposits[e.ID] = &Deposit{Event: e}
 	case "deposit-submitted":
 		d := s.Deposits[e.Ref]
@@ -334,26 +416,39 @@ func (s *State) apply(e Event) error {
 			return err
 		}
 		a := s.Accounts[e.UserID]
-		if e.GameVersion != game.Version || e.Amount < 1 || e.Amount > a.Available {
+		if a.Frozen {
+			return fmt.Errorf("account is frozen")
+		}
+		if e.GameVersion != game.VersionOf(e.Game) || e.GameVersion == 0 || e.Amount < 1 || e.Amount > a.Available {
 			return fmt.Errorf("invalid wager or insufficient funds")
 		}
-		if s.FreeHouse() < e.Amount {
+		bet, err := game.NormalizeBet(e.Game, e.Bet)
+		if err != nil || bet != e.Bet {
+			return fmt.Errorf("invalid bet")
+		}
+		max, err := game.MaxPayout(e.Game, e.Bet, e.Amount)
+		if err != nil || max > MaxCoins {
+			return fmt.Errorf("invalid wager or insufficient funds")
+		}
+		// Reserve the house's worst-case loss before any draw is sampled.
+		if s.FreeHouse() < max-e.Amount {
 			return fmt.Errorf("house reserve is insufficient")
 		}
 		a.Available -= e.Amount
-		s.Wagers[e.ID] = &Wager{Event: e}
+		s.Wagers[e.ID] = &Wager{Event: e, Max: max}
 	case "settle":
 		w := s.Wagers[e.Ref]
 		if w == nil || w.Settled || e.GameVersion != w.Event.GameVersion {
 			return fmt.Errorf("unknown or settled wager")
 		}
-		n, err := game.Payout(w.Event.Amount, e.Draw)
-		if err != nil || n != e.Amount {
+		n, err := game.Settle(w.Event.Game, w.Event.Bet, w.Event.Amount, e.Draw)
+		if err != nil || n != e.Amount || n > w.Max {
 			return fmt.Errorf("invalid payout")
 		}
 		s.Accounts[w.Event.UserID].Available += n
 		w.Settled = true
 		w.Payout = n
+		w.Draw = e.Draw
 	case "withdraw":
 		if err := s.owner(e); err != nil {
 			return err
@@ -388,6 +483,41 @@ func (s *State) apply(e Event) error {
 			}
 		}
 		w.UpstreamIssue = e.Issue
+	case "credit":
+		a, err := s.admin(e)
+		if err != nil {
+			return err
+		}
+		if e.Amount < 1 || e.Amount > MaxCoins || e.Reason == "" || a.Available > MaxCoins-e.Amount {
+			return fmt.Errorf("invalid credit")
+		}
+		// A credit moves house capital into a player liability; never overdraw it.
+		if s.FreeHouse() < e.Amount {
+			return fmt.Errorf("house reserve cannot cover the credit")
+		}
+		a.Available += e.Amount
+		s.Granted += e.Amount
+	case "freeze":
+		a, err := s.admin(e)
+		if err != nil {
+			return err
+		}
+		if e.Reason == "" {
+			return fmt.Errorf("invalid freeze")
+		}
+		if a.Frozen {
+			return fmt.Errorf("account is already frozen")
+		}
+		a.Frozen = true
+	case "unfreeze":
+		a, err := s.admin(e)
+		if err != nil {
+			return err
+		}
+		if !a.Frozen {
+			return fmt.Errorf("account is not frozen")
+		}
+		a.Frozen = false
 	default:
 		return fmt.Errorf("unknown event type %q", e.Type)
 	}

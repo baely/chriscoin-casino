@@ -17,6 +17,7 @@ import (
 )
 
 const LedgerPath = "ledger/events.jsonl"
+const editedMessage = "Edited comments are not accepted; submit a new comment."
 
 type Store interface {
 	Main(context.Context) (string, error)
@@ -51,7 +52,7 @@ type Processor struct {
 	Repository string
 	Config     ledger.Config
 	Now        func() time.Time
-	Sample     func(int64) (game.Draw, error)
+	Sample     func(wager ledger.Event) (game.Draw, error)
 	Limit      int
 	events     []ledger.Event
 	state      *ledger.State
@@ -273,7 +274,9 @@ func (p *Processor) Run(ctx context.Context) error {
 		}
 		sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
 		for _, c := range comments {
-			if c.User.Type != "User" || (c.User.ID == a.ID && !strings.HasPrefix(strings.TrimSpace(c.Body), "/")) {
+			// The treasury may chat on player issues; only its slash commands count.
+			admin := c.User.ID == p.Config.TreasuryID
+			if c.User.Type != "User" || ((c.User.ID == a.ID || admin) && !strings.HasPrefix(strings.TrimSpace(c.Body), "/")) {
 				continue
 			}
 			id := fmt.Sprintf("comment-%d", c.ID)
@@ -285,14 +288,32 @@ func (p *Processor) Run(ctx context.Context) error {
 			}
 			processed++
 			e := ledger.Event{ID: id, Type: "rejected", UserID: c.User.ID, Login: c.User.Login, Issue: a.Issue, Comment: c.ID, BodyHash: ledger.Hash([]byte(c.Body))}
+			adminCommand, adminAmount, adminReason, adminErr := ledger.AdminCommand(c.Body)
 			command, amount, parseErr := ledger.Command(c.Body)
+			gameName, bet, stake, gameErr := ledger.Play(c.Body)
 			switch {
+			case admin && adminCommand != "":
+				target := p.state.Accounts[a.ID]
+				switch {
+				case a.ID == p.Config.TreasuryID || target == nil || target.Issue != a.Issue:
+					e.Reason = "Admin commands only work on a player’s own account issue."
+				case !c.UpdatedAt.Equal(c.CreatedAt):
+					e.Reason = editedMessage
+				case adminErr != nil:
+					e.Reason = adminErr.Error()
+				default:
+					e.Type, e.Target, e.Amount, e.Reason = adminCommand, a.ID, adminAmount, adminReason
+				}
 			case c.User.ID != a.ID || p.state.Accounts[c.User.ID] == nil || p.state.Accounts[c.User.ID].Issue != a.Issue:
 				e.Reason = p.redirect(c.User.ID)
 			case !c.UpdatedAt.Equal(c.CreatedAt):
-				e.Reason = "Edited comments are not accepted; submit a new comment."
+				e.Reason = editedMessage
+			case gameName != "" && gameErr != nil:
+				e.Reason = gameErr.Error()
+			case gameName != "":
+				e.Type, e.Game, e.Bet, e.Amount, e.GameVersion = "wager", gameName, bet, stake, game.VersionOf(gameName)
 			case parseErr != nil:
-				e.Reason = "Use /deposit N, /wager N, /withdraw N, or /balance with positive whole coins."
+				e.Reason = "Use /deposit N, /wager N, /roulette N bet, /slots N, /withdraw N, or /balance with positive whole coins."
 			case command == "deposit" && c.User.ID == p.Config.TreasuryID:
 				e.Reason = treasuryDepositMessage
 			default:
@@ -304,6 +325,8 @@ func (p *Processor) Run(ctx context.Context) error {
 				if command == "wager" {
 					e.GameVersion = game.Version
 				}
+			}
+			if e.Type != "rejected" {
 				candidate := e
 				candidate.Version = 1
 				candidate.Sequence = len(p.events) + 1
@@ -313,6 +336,8 @@ func (p *Processor) Run(ctx context.Context) error {
 					e.Reason = err.Error()
 					e.Amount = 0
 					e.GameVersion = 0
+					e.Game, e.Bet = "", ""
+					e.Target = 0
 				}
 			}
 			if data, err := p.Store.File(ctx, LedgerPath, eventBranch(e.ID)); err == nil {
@@ -367,15 +392,15 @@ func (p *Processor) settle(ctx context.Context) error {
 			return err
 		} else {
 			if p.Sample != nil {
-				d, err = p.Sample(w.Event.Amount)
+				d, err = p.Sample(w.Event)
 			} else {
-				d, err = game.Sample(rand.Reader, w.Event.Amount)
+				d, err = game.Roll(rand.Reader, w.Event.Game, w.Event.Bet, w.Event.Amount)
 			}
 			if err != nil {
 				return err
 			}
 		}
-		payout, err := game.Payout(w.Event.Amount, d)
+		payout, err := game.Settle(w.Event.Game, w.Event.Bet, w.Event.Amount, d)
 		if err != nil {
 			return err
 		}

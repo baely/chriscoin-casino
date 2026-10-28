@@ -31,9 +31,35 @@ Only that account's numeric GitHub user ID can submit its commands. Renaming you
 
 Withdrawals require at least 2 CC. A 1 CC deposit is entirely consumed by the deposit fee. Casino accounts start at zero; ChrisCoin's upstream starting allowance is never duplicated inside the casino.
 
+### Operator commands
+
+The treasury account can comment these on a player's account issue:
+
+```text
+/credit 5 sorry about the outage
+/freeze spamming other players
+/unfreeze
+```
+
+`/credit N reason` moves N CC of house capital into the player's balance. It is refused if the free house reserve cannot cover it. `/freeze reason` pauses the player's wagers and `/deposit` requests. `/withdraw` and `/balance` keep working, so a frozen balance always stays the player's. Settled direct deposits are still credited. `/unfreeze` lifts the freeze. Every operator command is a public ledger event with its reason, and the player sees the reason in the reply. The treasury's comments without a slash on player issues are ignored, so the operator can chat with a player there. No command takes funds from a player or changes a wager result.
+
 The treasury account cannot deposit into itself: a self-payment moves no CC and creates no player credit or deposit fee. Use a separate GitHub account to play when you also operate the treasury.
 
 Wagers return whole CC between zero and twice the stake, including the stake. Go's `crypto/rand` generates the draw; the ledger records each accepted wager and its settlement.
+
+### Roulette and slots
+
+```text
+/roulette 10 red
+/roulette 5 17
+/slots 10
+```
+
+Roulette is single-zero European roulette, and every bet returns 36/37 of the stake on average. Bet `red`, `black`, `odd`, `even`, `low` (or `1-18`), or `high` (or `19-36`) to win twice the stake. Bet `1-12`, `13-24`, or `25-36` to win three times the stake, or a single number from `0` to `36` to win 36 times the stake. Zero loses every outside bet.
+
+Slots spin three reels over one 20-stop strip: one 7️⃣, two ⭐, four 🔔, six 🍋, and seven 🍒. Three of a kind pays 50x for 7️⃣, 25x for ⭐, 12x for 🔔, 8x for 🍋, or 3x for 🍒. Exactly two 🍒 anywhere pay 2x. The exact expected return is 7597/8000 (about 95%), and about 32% of spins pay something.
+
+Payouts include the stake. Before any draw, the house reserves the worst-case payout: 35x the stake for a single-number roulette bet and 49x for slots. A bet the free house reserve cannot cover is rejected without moving coins. Draws are frozen on their bot branch exactly like `/wager` draws, so retries never reroll.
 
 ## Setup
 

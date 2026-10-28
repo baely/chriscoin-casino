@@ -207,7 +207,7 @@ func fixture(t *testing.T) (*Processor, *memory, *upstream) {
 	m := newMemory()
 	u := &upstream{}
 	u.add(house, "allowance", cc.Command{Action: "claim"}, 0, 0)
-	p := &Processor{Store: m, Upstream: u, Payer: u, Repository: "test/casino", Config: ledger.Config{UpstreamRepository: "test/coin", TreasuryID: 9, StartingCommit: fmt.Sprintf("%040x", 1001)}, Now: func() time.Time { return testNow }, Sample: func(int64) (game.Draw, error) { return game.Draw{Gate: 50, Return: 17}, nil }}
+	p := &Processor{Store: m, Upstream: u, Payer: u, Repository: "test/casino", Config: ledger.Config{UpstreamRepository: "test/coin", TreasuryID: 9, StartingCommit: fmt.Sprintf("%040x", 1001)}, Now: func() time.Time { return testNow }, Sample: func(ledger.Event) (game.Draw, error) { return game.Draw{Gate: 50, Return: 17}, nil }}
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestDepositWagerWithdrawalAndReplay(t *testing.T) {
 func TestFrozenDrawSurvivesFailureAndDeletedComment(t *testing.T) {
 	p, m, _ := fixture(t)
 	calls := 0
-	p.Sample = func(int64) (game.Draw, error) { calls++; return game.Draw{Gate: 50, Return: 17}, nil }
+	p.Sample = func(ledger.Event) (game.Draw, error) { calls++; return game.Draw{Gate: 50, Return: 17}, nil }
 	comment(m, 10, "/wager 10", alice)
 	m.failType = "settle"
 	if err := p.Run(ctx); err == nil {
@@ -265,7 +265,7 @@ func TestFrozenDrawSurvivesFailureAndDeletedComment(t *testing.T) {
 	}
 	m.comments[1] = comments
 	m.issues[0].State = "closed"
-	p.Sample = func(int64) (game.Draw, error) { t.Fatal("rerolled a frozen draw"); return game.Draw{}, nil }
+	p.Sample = func(ledger.Event) (game.Draw, error) { t.Fatal("rerolled a frozen draw"); return game.Draw{}, nil }
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -449,7 +449,7 @@ func TestReplyFailureDoesNotRepeatWager(t *testing.T) {
 	if err := p.Run(ctx); err == nil {
 		t.Fatal("expected lost settlement response")
 	}
-	p.Sample = func(int64) (game.Draw, error) { t.Fatal("settled wager rerolled"); return game.Draw{}, nil }
+	p.Sample = func(ledger.Event) (game.Draw, error) { t.Fatal("settled wager rerolled"); return game.Draw{}, nil }
 	if err := p.Run(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -538,5 +538,69 @@ func TestWithdrawalRecoveryAcceptsLegacyReference(t *testing.T) {
 	}
 	if u.created != 1 || m.state(t).Withdrawals["comment-10"].UpstreamIssue != 101 {
 		t.Fatal("legacy withdrawal was not recovered")
+	}
+}
+func TestTreasuryFreezesAndCreditsPlayers(t *testing.T) {
+	p, m, _ := fixture(t)
+	comment(m, 10, "Thanks for playing!", house)
+	comment(m, 11, "/credit 5 sorry about the outage", gh.User{ID: 2, Login: "bob", Type: "User"})
+	comment(m, 12, "/credit 5 sorry about the outage", house)
+	comment(m, 13, "/credit 500 too generous", house)
+	comment(m, 14, "/freeze spam", house)
+	comment(m, 15, "/wager 10", alice)
+	comment(m, 16, "/withdraw 10", alice)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := m.state(t)
+	if _, ok := s.Events["comment-10"]; ok {
+		t.Fatal("treasury chat was recorded as a command")
+	}
+	for id, want := range map[string]string{"comment-11": "rejected", "comment-12": "credit", "comment-13": "rejected", "comment-14": "freeze", "comment-15": "rejected", "comment-16": "withdraw"} {
+		if s.Events[id].Type != want {
+			t.Fatalf("%s = %s, want %s", id, s.Events[id].Type, want)
+		}
+	}
+	if !s.Accounts[alice.ID].Frozen || s.Accounts[alice.ID].Available != 34 || s.Granted != 5 {
+		t.Fatalf("unexpected state: %+v", s.Accounts[alice.ID])
+	}
+	if !hasReply(m, 1, "🎁 The house sent you **5 CC**. Reason: sorry about the outage") || !hasReply(m, 1, "Reason: spam") || !hasReply(m, 1, "This account is frozen by the operator") || !hasReply(m, 1, "🧊 **Frozen by the operator.**") {
+		t.Fatal("missing admin replies")
+	}
+	comment(m, 17, "/unfreeze", house)
+	comment(m, 18, "/wager 10", alice)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if s = m.state(t); s.Accounts[alice.ID].Frozen || s.Events["comment-18"].Type != "wager" {
+		t.Fatal("unfreeze did not restore play")
+	}
+}
+func TestRouletteAndSlots(t *testing.T) {
+	p, m, _ := fixture(t)
+	p.Sample = func(w ledger.Event) (game.Draw, error) {
+		if w.Game == game.Roulette {
+			return game.Draw{Pocket: 17}, nil
+		}
+		return game.Draw{Reels: []int64{9, 9, 9}}, nil
+	}
+	comment(m, 10, "/roulette 1 17", alice)
+	comment(m, 11, "/roulette 5 RED", alice)
+	comment(m, 12, "/roulette 5 green", alice)
+	comment(m, 13, "/slots 1", alice)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := m.state(t)
+	if s.Wagers["comment-10"].Payout != 36 || s.Wagers["comment-11"].Payout != 0 || s.Events["comment-11"].Bet != "red" || s.Events["comment-12"].Type != "rejected" || s.Wagers["comment-13"].Payout != 50 {
+		t.Fatalf("unexpected games: %+v", s.Wagers)
+	}
+	if s.Accounts[alice.ID].Available != 39-1+36-5-1+50 {
+		t.Fatalf("balance %d", s.Accounts[alice.ID].Available)
+	}
+	for _, want := range []string{"🎡 The ball lands on **17 ⚫**", "That pays **36 CC**! You’re **35 CC up**!", "lost your **5 CC** bet", "bet on red, black", "**[ 7️⃣ | 7️⃣ | 7️⃣ ]** 💥 JACKPOT!", "`/slots 10`"} {
+		if !hasReply(m, 1, want) {
+			t.Fatalf("missing reply %q", want)
+		}
 	}
 }

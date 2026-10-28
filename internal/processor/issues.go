@@ -28,6 +28,8 @@ Your balance here updates as your coins move. To get started:
 
 - `+"`/deposit 100`"+` — grab some chips: pay 100 CC and get 99 CC to play with.
 - `+"`/wager 10`"+` — put 10 CC on the table; you could get back anything from 0 to 20 CC, including your stake.
+- `+"`/roulette 10 red`"+` — spin the wheel. Bet red, black, odd, even, low, high, 1-12, 13-24, 25-36 (pays 3x), or a single number 0–36 (pays 36x). Colour, odd/even, and low/high bets pay 2x.
+- `+"`/slots 10`"+` — pull the lever. Three 7️⃣ pay 50x, ⭐ 25x, 🔔 12x, 🍋 8x, 🍒 3x, and any two 🍒 pay 2x.
 - `+"`/withdraw 50`"+` — cash out 50 CC and take 49 CC back to ChrisCoin.
 - `+"`/balance`"+` — check your chips.
 

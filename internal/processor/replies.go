@@ -7,11 +7,18 @@ import (
 	"strings"
 
 	cc "chriscoin-casino/internal/chriscoin"
+	"chriscoin-casino/internal/game"
 	"chriscoin-casino/internal/ledger"
 )
 
 func wagerResult(w *ledger.Wager) string {
 	stake := w.Event.Amount
+	switch w.Event.Game {
+	case game.Roulette:
+		return rouletteResult(w)
+	case game.Slots:
+		return slotsResult(w)
+	}
 	switch {
 	case !w.Settled:
 		return fmt.Sprintf("🎲 Your **%d CC** is on the table. The dealer is rolling…", stake)
@@ -28,6 +35,43 @@ func wagerResult(w *ledger.Wager) string {
 	}
 }
 
+func gameOutcome(w *ledger.Wager, lost string) string {
+	switch stake := w.Event.Amount; {
+	case w.Payout == 0:
+		return lost
+	case w.Payout == stake:
+		return fmt.Sprintf("🤝 Your **%d CC** is back. You broke even this round.", stake)
+	}
+	return fmt.Sprintf("🎉 That pays **%d CC**! You’re **%d CC up**!", w.Payout, w.Payout-w.Event.Amount)
+}
+func rouletteResult(w *ledger.Wager) string {
+	stake, bet := w.Event.Amount, w.Event.Bet
+	if !w.Settled {
+		return fmt.Sprintf("🎡 Your **%d CC** on **%s** is on the wheel. No more bets…", stake, bet)
+	}
+	pocket := w.Draw.Pocket
+	return fmt.Sprintf("🎡 The ball lands on **%d %s**. You bet %d CC on **%s**.\n\n", pocket, game.PocketColor(pocket), stake, bet) +
+		gameOutcome(w, fmt.Sprintf("No luck this spin — you lost your **%d CC** bet.", stake))
+}
+func slotsResult(w *ledger.Wager) string {
+	stake := w.Event.Amount
+	if !w.Settled {
+		return fmt.Sprintf("🎰 Your **%d CC** spin is whirring…", stake)
+	}
+	reels, err := game.Reels(w.Draw)
+	if err != nil {
+		return "🎰 Spin settled."
+	}
+	headline := ""
+	if reels[0] == reels[1] && reels[1] == reels[2] {
+		headline = " Three of a kind!"
+		if reels[0] == game.Seven {
+			headline = " 💥 JACKPOT!"
+		}
+	}
+	return fmt.Sprintf("🎰 **[ %s ]**%s\n\n", strings.Join(reels, " | "), headline) +
+		gameOutcome(w, fmt.Sprintf("No match — you lost your **%d CC** spin.", stake))
+}
 func rejectionResult(e ledger.Event) string {
 	reason := strings.TrimPrefix(e.Reason, "event "+e.ID+": ")
 	switch reason {
@@ -35,6 +79,10 @@ func rejectionResult(e ledger.Event) string {
 		return "That wager didn’t go through. Choose a positive whole amount covered by your balance. Your coins haven’t moved."
 	case "house reserve is insufficient":
 		return "The table can’t cover that wager right now. Your coins haven’t moved."
+	case "account is frozen":
+		return "This account is frozen by the operator. Wagers and deposit requests are paused; `/withdraw` and `/balance` still work. Your coins haven’t moved."
+	case "house reserve cannot cover the credit":
+		return "The house reserve can’t cover that credit right now. No coins moved."
 	case "invalid withdrawal, insufficient funds, or treasury shortfall":
 		return "That cash-out didn’t go through. It needs to be at least 2 CC and covered by your balance and the treasury. Your coins haven’t moved."
 	default:
@@ -55,6 +103,15 @@ func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
 			message = p.depositResult(e, up)
 		case "balance":
 			message = "🪙 Here’s your chip count."
+		case "credit":
+			message = fmt.Sprintf("🎁 The house sent you **%d CC**. Reason: %s", e.Amount, e.Reason)
+		case "freeze":
+			message = fmt.Sprintf("🧊 This account has been frozen by the operator. Reason: %s\n\nWagers and deposit requests are paused. Your balance is still yours: `/withdraw` and `/balance` keep working.", e.Reason)
+		case "unfreeze":
+			message = "🔓 This account has been unfrozen. You’re back at the table!"
+			if e.Reason != "" {
+				message += " Reason: " + e.Reason
+			}
 		case "wager":
 			message = wagerResult(p.state.Wagers[e.ID])
 		case "withdraw":
@@ -74,7 +131,11 @@ func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
 		default:
 			continue
 		}
-		if a := p.state.Accounts[e.UserID]; a != nil && a.Issue == e.Issue {
+		owner := e.UserID
+		if e.Target != 0 {
+			owner = e.Target
+		}
+		if a := p.state.Accounts[owner]; a != nil && a.Issue == e.Issue {
 			message += fmt.Sprintf("\n\n**Balance: %d CC** · available to play", a.Available)
 		}
 		if err := p.reply(ctx, e.Issue, e.ID, message); err != nil {
@@ -91,7 +152,11 @@ func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
 	}
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].Issue < accounts[j].Issue })
 	for _, a := range accounts {
-		if err := p.reply(ctx, a.Issue, "account", p.welcome(up.State.Accounts[p.Config.TreasuryID].Login, a.Available)); err != nil {
+		card := p.welcome(up.State.Accounts[p.Config.TreasuryID].Login, a.Available)
+		if a.Frozen {
+			card += "\n\n🧊 **Frozen by the operator.** Wagers and deposit requests are paused; `/withdraw` and `/balance` still work."
+		}
+		if err := p.reply(ctx, a.Issue, "account", card); err != nil {
 			return err
 		}
 	}

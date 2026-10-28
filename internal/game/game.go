@@ -11,9 +11,13 @@ import (
 
 const Version = 1
 
+// Draw holds one game's random outcome. The original game uses Gate and
+// Return; roulette uses Pocket and slots uses Reels.
 type Draw struct {
-	Gate   int64 `json:"gate"`
-	Return int64 `json:"return"`
+	Gate   int64   `json:"gate"`
+	Return int64   `json:"return"`
+	Pocket int64   `json:"pocket,omitempty"`
+	Reels  []int64 `json:"reels,omitempty"`
 }
 
 func Payout(stake int64, d Draw) (int64, error) {
