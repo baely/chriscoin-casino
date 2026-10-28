@@ -78,13 +78,13 @@ func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 		if e.UserID == p.Config.TreasuryID {
 			return treasuryDepositMessage
 		}
-		return "Deposit request pending. " + direct
+		return "🪙 Getting your chips ready — your payment link is on its way. " + direct
 	}
 	requestID := fmt.Sprintf("request-%d", d.UpstreamIssue)
 	issueURL := fmt.Sprintf("https://github.com/%s/issues/%d", p.Config.UpstreamRepository, d.UpstreamIssue)
 	r := up.State.Requests[requestID]
 	if r == nil {
-		return fmt.Sprintf("Deposit request submitted for %d CC. Waiting for ChrisCoin to record [the request](%s); a Pay link will appear here once it is ready.", e.Amount, issueURL)
+		return fmt.Sprintf("🪙 Your %d CC chip order is in! Waiting for [ChrisCoin](%s) to get the payment link ready.", e.Amount, issueURL)
 	}
 	if r.Requester != p.Config.TreasuryID || r.Amount != e.Amount {
 		return "Deposit request does not match the expected treasury or amount. Do not pay it; contact the operator. " + direct
@@ -96,17 +96,17 @@ func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 		}
 		for _, payment := range up.Events {
 			if payment.Type == "fulfill" && payment.Source.Command.RequestID == requestID && payment.Actor.ID == r.PaidBy && p.state.Imported[payment.ID] {
-				return fmt.Sprintf("Deposit request paid by GitHub user ID %d: %d CC sent, %d CC credited to the actual payer, 1 CC fee.", r.PaidBy, e.Amount, e.Amount-1)
+				return fmt.Sprintf("🪙 Chips are in! **%d CC** added to **@%s**’s balance. The %d CC payment included a 1 CC fee.", e.Amount-1, p.state.Accounts[r.PaidBy].Login, e.Amount)
 			}
 		}
 		return "ChrisCoin records this request as paid, but the casino ledger has not recorded the deposit. No casino credit is confirmed yet; contact the operator if this persists."
 	case "cancelled":
-		return "This deposit request was cancelled. Submit a new /deposit command for another request. " + direct
+		return "That chip order was cancelled. Use `/deposit N` to start a fresh one. " + direct
 	case "open":
 		command := cc.Command{Action: "fulfill", RequestID: requestID}
 		body := cc.RequestBody(command, "")
 		q := url.Values{"template": {"request.md"}, "title": {cc.RequestTitle(command)}, "body": {body}}
-		return fmt.Sprintf("[Pay %d CC](https://github.com/%s/issues/new?%s) to receive %d CC casino credit after settlement (1 CC fee). Submit the prefilled ChrisCoin issue while signed in. Reusing this same request cannot pay it twice.\n\n[View the payment request](%s).", e.Amount, p.Config.UpstreamRepository, q.Encode(), e.Amount-1, issueURL)
+		return fmt.Sprintf("🪙 Your chips are waiting! [Pay %d CC](https://github.com/%s/issues/new?%s) to add **%d CC** to your balance after the 1 CC fee. Open the link and submit the prefilled ChrisCoin issue while signed in. This payment link can only be used once.\n\n[View the payment request](%s).", e.Amount, p.Config.UpstreamRepository, q.Encode(), e.Amount-1, issueURL)
 	default:
 		return "Deposit request status is unavailable. " + direct
 	}

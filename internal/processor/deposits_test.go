@@ -49,7 +49,7 @@ func TestRequestedDepositCreditsActualPayerOnlyAfterSettlement(t *testing.T) {
 	if s.Accounts[alice.ID].Available != 39 || s.Accounts[bob.ID].Available != 19 || s.Fees != 2 || s.Accounts[bob.ID].Issue != 0 {
 		t.Fatalf("paid request not credited to actual payer: %+v", s.Accounts)
 	}
-	if !hasReply(m, 1, "paid by GitHub user ID 2") {
+	if !hasReply(m, 1, "**19 CC** added to **@bob**’s balance") {
 		t.Fatal("request result named the intended depositor rather than payer")
 	}
 	if err := p.Run(ctx); err != nil {

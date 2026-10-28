@@ -15,25 +15,27 @@ func (p *Processor) issueURL(number int) string {
 }
 func (p *Processor) redirect(userID int64) string {
 	if a := p.state.Accounts[userID]; a != nil && a.Issue > 0 {
-		return fmt.Sprintf("This is not your account issue. Please use [your casino account](%s).", p.issueURL(a.Issue))
+		return fmt.Sprintf("This seat is taken! Head over to [your casino account](%s).", p.issueURL(a.Issue))
 	}
-	return fmt.Sprintf("This is not your account issue. [Open your own casino account](https://github.com/%s/issues/new?template=account.md) to get started.", p.Repository)
+	return fmt.Sprintf("This seat is taken! [Open your own casino account](https://github.com/%s/issues/new?template=account.md) to get started.", p.Repository)
 }
-func (p *Processor) welcome(treasuryLogin string) string {
-	return fmt.Sprintf(`Welcome! This is your personal ChrisCoin Casino account.
+func (p *Processor) welcome(treasuryLogin string, balance int64) string {
+	return fmt.Sprintf(`🎰 Welcome! Pull up a seat. This is your own little corner of ChrisCoin Casino.
 
-Comment here to interact:
+**Balance: %d CC** · available to play
 
-- `+"`/deposit 100`"+` — get a ChrisCoin payment link; paying 100 CC credits 99 CC here.
-- `+"`/wager 10`"+` — stake 10 CC for a return between 0 and 20 CC, including the stake.
-- `+"`/withdraw 50`"+` — withdraw 50 CC from your casino balance and receive 49 CC in ChrisCoin.
-- `+"`/balance`"+` — check your available balance.
+Your balance here updates as your coins move. To get started:
+
+- `+"`/deposit 100`"+` — grab some chips: pay 100 CC and get 99 CC to play with.
+- `+"`/wager 10`"+` — put 10 CC on the table; you could get back anything from 0 to 20 CC, including your stake.
+- `+"`/withdraw 50`"+` — cash out 50 CC and take 49 CC back to ChrisCoin.
+- `+"`/balance`"+` — check your chips.
 
 You can also send CC directly to `+"`%s`"+` in [ChrisCoin](https://github.com/%s); the casino credits the actual payer after settlement. Each deposit and successful withdrawal costs 1 CC. A deposit of 1 CC leaves no casino credit. Wagers have no extra transfer fee.
 
-The user who opened this issue owns this account. Only you can use it. Use a new comment for each command; results arrive asynchronously. Casino accounts start at zero.
+This is your seat: the user who opened this issue owns the account. Only you can use it. Drop a fresh comment for each command and give the dealer a moment to respond. New accounts start at zero.
 
-You may close this issue. If you open another account issue, it will link back here, close, and reopen this original issue.`, treasuryLogin, p.Config.UpstreamRepository)
+You may close this issue. If you open another account issue, it will link back here, close, and reopen this original issue.`, balance, treasuryLogin, p.Config.UpstreamRepository)
 }
 
 func (p *Processor) ensureAccounts(ctx context.Context, issues []gh.Issue) error {
@@ -111,7 +113,7 @@ func (p *Processor) ensureAccounts(ctx context.Context, issues []gh.Issue) error
 	return nil
 }
 func (p *Processor) duplicateReply(ctx context.Context, duplicate, original int) error {
-	return p.reply(ctx, duplicate, "duplicate", fmt.Sprintf("You already have a casino account: [use your original issue](%s). This duplicate will be closed.", p.issueURL(original)))
+	return p.reply(ctx, duplicate, "duplicate", fmt.Sprintf("Your seat is saved! [use your original issue](%s). This duplicate will be closed.", p.issueURL(original)))
 }
 
 func containsMarker(body, marker string) bool {

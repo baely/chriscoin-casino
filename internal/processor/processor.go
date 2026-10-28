@@ -267,11 +267,6 @@ func (p *Processor) Run(ctx context.Context) error {
 	sort.Slice(accounts, func(i, j int) bool { return accounts[i].Issue < accounts[j].Issue })
 	processed := 0
 	for _, a := range accounts {
-		if original := p.state.Accounts[a.ID]; original != nil && original.Issue == a.Issue {
-			if err := p.reply(ctx, a.Issue, "account", p.welcome(treasury.Login)); err != nil {
-				return err
-			}
-		}
 		comments, err := p.Store.Comments(ctx, a.Issue)
 		if err != nil {
 			return err
@@ -505,49 +500,6 @@ func (p *Processor) reply(ctx context.Context, issue int, id, message string) er
 		}
 	}
 	return p.Store.Comment(ctx, issue, body)
-}
-func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
-	for _, e := range p.events {
-		if e.Comment == 0 {
-			continue
-		}
-		var message string
-		switch e.Type {
-		case "rejected":
-			message = "Request rejected: " + e.Reason
-		case "deposit":
-			message = p.depositResult(e, up)
-		case "balance":
-			message = fmt.Sprintf("Available balance when this command was processed: %d CC.", e.Amount)
-		case "wager":
-			w := p.state.Wagers[e.ID]
-			if !w.Settled {
-				message = "Wager accepted; settlement pending."
-			} else {
-				message = fmt.Sprintf("Wager: %d CC. Return: %d CC. Net: %+d CC. Game version %d.", e.Amount, w.Payout, w.Payout-e.Amount, e.GameVersion)
-			}
-		case "withdraw":
-			w := p.state.Withdrawals[e.ID]
-			switch {
-			case w.Released:
-				message = fmt.Sprintf("Withdrawal rejected by ChrisCoin; %d CC restored. No withdrawal fee charged.", e.Amount)
-			case w.Paid:
-				message = fmt.Sprintf("Withdrawal complete: %d CC sent; 1 CC fee.", e.Amount-1)
-			case w.UpstreamIssue > 0:
-				message = fmt.Sprintf("Withdrawal locked: %d CC including 1 CC fee. Awaiting ChrisCoin payment: https://github.com/%s/issues/%d", e.Amount, p.Config.UpstreamRepository, w.UpstreamIssue)
-			case w.Attempted:
-				message = "Withdrawal submission is uncertain. Funds remain locked while the operator reconciles upstream; the worker will not resend it."
-			default:
-				message = "Withdrawal funds locked; awaiting treasury submission."
-			}
-		default:
-			continue
-		}
-		if err := p.reply(ctx, e.Issue, e.ID, message); err != nil {
-			return err
-		}
-	}
-	return nil
 }
 
 // A ChrisCoin bot rejection is terminal for that issue in the upstream worker.
