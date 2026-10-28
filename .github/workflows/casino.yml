@@ -5,8 +5,10 @@ on:
     types: [opened]
   issue_comment:
     types: [created]
+  # Scheduled runs also import ChrisCoin payments. GitHub drops many of them,
+  # especially at busy minutes (:00 and multiples of 5), so use quieter ones.
   schedule:
-    - cron: "*/5 * * * *"
+    - cron: "3,9,16,22,28,34,41,47,53 * * * *"
   workflow_dispatch:
 
 # Every run drains unprocessed comments and recorded pending operations.
