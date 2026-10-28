@@ -31,6 +31,8 @@ Only that account's numeric GitHub user ID can submit its commands. Renaming you
 
 Withdrawals require at least 2 CC. A 1 CC deposit is entirely consumed by the deposit fee. Casino accounts start at zero; ChrisCoin's upstream starting allowance is never duplicated inside the casino.
 
+The treasury account cannot deposit into itself: a self-payment moves no CC and creates no player credit or deposit fee. Use a separate GitHub account to play when you also operate the treasury.
+
 Wagers return whole CC between zero and twice the stake, including the stake. Go's `crypto/rand` generates the draw; the ledger records each accepted wager and its settlement.
 
 ## Setup

@@ -298,6 +298,8 @@ func (p *Processor) Run(ctx context.Context) error {
 				e.Reason = "Edited comments are not accepted; submit a new comment."
 			case parseErr != nil:
 				e.Reason = "Use /deposit N, /wager N, /withdraw N, or /balance with positive whole coins."
+			case command == "deposit" && c.User.ID == p.Config.TreasuryID:
+				e.Reason = treasuryDepositMessage
 			default:
 				e.Type = command
 				e.Amount = amount

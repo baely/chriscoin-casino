@@ -11,6 +11,8 @@ import (
 	"chriscoin-casino/internal/ledger"
 )
 
+const treasuryDepositMessage = "The treasury account cannot deposit into itself. Paying yourself moves no CC and creates no casino credit. Use a different GitHub account to play; no deposit fee is charged."
+
 func depositMarker(repository, id string) string {
 	return cc.RequestMarker(repository, "deposit", id)
 }
@@ -20,7 +22,7 @@ func (p *Processor) submitDeposits(ctx context.Context) error {
 	}
 	ids := []string{}
 	for id, d := range p.state.Deposits {
-		if d.UpstreamIssue == 0 {
+		if d.UpstreamIssue == 0 && d.Event.UserID != p.Config.TreasuryID {
 			ids = append(ids, id)
 		}
 	}
@@ -73,6 +75,9 @@ func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 	d := p.state.Deposits[e.ID]
 	direct := fmt.Sprintf("You can also send CC directly to the treasury in [ChrisCoin](https://github.com/%s).", p.Config.UpstreamRepository)
 	if d.UpstreamIssue == 0 {
+		if e.UserID == p.Config.TreasuryID {
+			return treasuryDepositMessage
+		}
 		return "Deposit request pending. " + direct
 	}
 	requestID := fmt.Sprintf("request-%d", d.UpstreamIssue)
@@ -86,7 +91,15 @@ func (p *Processor) depositResult(e ledger.Event, up cc.Snapshot) string {
 	}
 	switch r.Status {
 	case "paid":
-		return fmt.Sprintf("Deposit request paid by GitHub user ID %d: %d CC sent, %d CC credited to the actual payer, 1 CC fee.", r.PaidBy, e.Amount, e.Amount-1)
+		if r.PaidBy == p.Config.TreasuryID {
+			return "This request was paid by the treasury account to itself. No CC moved, no casino credit was added, and no deposit fee was charged. Use a different GitHub account to play."
+		}
+		for _, payment := range up.Events {
+			if payment.Type == "fulfill" && payment.Source.Command.RequestID == requestID && payment.Actor.ID == r.PaidBy && p.state.Imported[payment.ID] {
+				return fmt.Sprintf("Deposit request paid by GitHub user ID %d: %d CC sent, %d CC credited to the actual payer, 1 CC fee.", r.PaidBy, e.Amount, e.Amount-1)
+			}
+		}
+		return "ChrisCoin records this request as paid, but the casino ledger has not recorded the deposit. No casino credit is confirmed yet; contact the operator if this persists."
 	case "cancelled":
 		return "This deposit request was cancelled. Submit a new /deposit command for another request. " + direct
 	case "open":
