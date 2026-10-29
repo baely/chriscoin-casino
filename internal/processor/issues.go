@@ -123,7 +123,7 @@ func (p *Processor) closedIssues(ctx context.Context, issues []gh.Issue) error {
 		if _, handled := p.state.Events[fmt.Sprintf("duplicate-%d", issue.Number)]; issue.User.Type != "User" || issue.State != "open" || handled || (a != nil && a.Issue == issue.Number) {
 			continue
 		}
-		if err := p.reply(ctx, issue.Number, "closed", "🚧 The casino is closed right now. Your money is safe. Check back soon! Your account opens here once we reopen."); err != nil {
+		if err := p.reply(ctx, issue.Number, "closed", movedNotice); err != nil {
 			return err
 		}
 	}

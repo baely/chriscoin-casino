@@ -19,9 +19,18 @@ import (
 const LedgerPath = "ledger/events.jsonl"
 const editedMessage = "Edited comments are not accepted; submit a new comment."
 
-// closedMessage answers every command while the casino is closed. The command
+// The casino now runs live at casino.baileys.dev, settled by Bailey Bank, and
+// every balance here was moved to the player's bank account.
+const movedURL = "https://casino.baileys.dev"
+const movedNotice = "🎰 **The Casino has moved!** " + movedURL + " Your balance is waiting for you in your linked Bailey Bank account."
+
+// closedMessage answers every comment while the casino is closed. The command
 // is recorded as rejected, so it never runs, even after the casino reopens.
-const closedMessage = "🚧 The casino is closed right now. Your money is safe. Check back soon! This command wasn’t run; send it again once we reopen."
+const closedMessage = movedNotice
+
+// earlierClosedMessage is the reason recorded on comments rejected before the
+// casino moved; their replies keep it.
+const earlierClosedMessage = "🚧 The casino is closed right now. Your money is safe. Check back soon! This command wasn’t run; send it again once we reopen."
 
 type Store interface {
 	Main(context.Context) (string, error)
@@ -296,8 +305,10 @@ func (p *Processor) Run(ctx context.Context) error {
 		sort.Slice(comments, func(i, j int) bool { return comments[i].ID < comments[j].ID })
 		for _, c := range comments {
 			// The treasury may chat on player issues; only its slash commands count.
+			// While closed, a player's every comment gets the moved notice.
 			admin := c.User.ID == p.Config.TreasuryID
-			if c.User.Type != "User" || ((c.User.ID == a.ID || admin) && !strings.HasPrefix(strings.TrimSpace(c.Body), "/")) {
+			chat := admin || (c.User.ID == a.ID && !p.Closed)
+			if c.User.Type != "User" || (chat && !strings.HasPrefix(strings.TrimSpace(c.Body), "/")) {
 				continue
 			}
 			id := fmt.Sprintf("comment-%d", c.ID)

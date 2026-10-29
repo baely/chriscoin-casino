@@ -75,8 +75,8 @@ func slotsResult(w *ledger.Wager) string {
 func rejectionResult(e ledger.Event) string {
 	reason := strings.TrimPrefix(e.Reason, "event "+e.ID+": ")
 	switch reason {
-	case closedMessage:
-		return closedMessage
+	case closedMessage, earlierClosedMessage:
+		return reason
 	case "invalid wager or insufficient funds":
 		return "That wager didn’t go through. Choose a positive whole amount covered by your balance. Your coins haven’t moved."
 	case "house reserve is insufficient":
@@ -186,7 +186,7 @@ func (p *Processor) results(ctx context.Context, up cc.Snapshot) error {
 	for _, a := range accounts {
 		card := p.welcome(up.State.Accounts[p.Config.TreasuryID].Login, a.Available)
 		if p.Closed {
-			card = "🚧 **The casino is closed right now.** Your money is safe. Check back soon!\n\n" + card
+			card = movedNotice + "\n\n" + card
 		}
 		if a.Frozen {
 			card += "\n\n🧊 **Frozen by the operator.** Wagers and deposit requests are paused; `/withdraw` and `/balance` still work."

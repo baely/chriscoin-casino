@@ -5,19 +5,24 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
 	gh "chriscoin-casino/internal/github"
 	"chriscoin-casino/internal/ledger"
 	"chriscoin-casino/internal/processor"
 	"chriscoin-casino/internal/site"
+	"chriscoin-casino/internal/web"
 )
 
 func run() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: casino validate|state|process|site [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH] [--out _site] [--commit SHA]")
+		return fmt.Errorf("usage: casino serve|validate|state|process|site [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH] [--out _site] [--commit SHA]")
 	}
 	flags := flag.NewFlagSet(os.Args[1], flag.ContinueOnError)
 	configPath := flags.String("config", "casino.json", "configuration file")
@@ -29,6 +34,19 @@ func run() error {
 		return err
 	}
 	switch os.Args[1] {
+	case "serve":
+		return serve()
+	case "healthcheck":
+		// For the container healthcheck: the image has no shell or curl.
+		res, err := http.Get("http://127.0.0.1" + or(env("CASINO_ADDR"), ":8080") + "/healthz")
+		if err != nil {
+			return err
+		}
+		res.Body.Close()
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("healthz: %s", res.Status)
+		}
+		return nil
 	case "validate", "state":
 		data, err := os.ReadFile(*ledgerPath)
 		if err != nil {
@@ -103,6 +121,54 @@ func run() error {
 		return fmt.Errorf("unknown command %q", os.Args[1])
 	}
 }
+
+// env returns NAME, or the trimmed contents of the file named by NAME_FILE.
+func env(name string) string {
+	if v := strings.TrimSpace(os.Getenv(name)); v != "" {
+		return v
+	}
+	if p := strings.TrimSpace(os.Getenv(name + "_FILE")); p != "" {
+		if b, err := os.ReadFile(p); err == nil {
+			return strings.TrimSpace(string(b))
+		}
+	}
+	return ""
+}
+
+func or(v, def string) string {
+	if v == "" {
+		return def
+	}
+	return v
+}
+
+// serve runs the live casino. Bailey Bank holds every balance and signs
+// players in; see internal/web.
+func serve() error {
+	prod := env("CASINO_ENV") == "production"
+	addr := or(env("CASINO_ADDR"), map[bool]string{true: ":8080", false: "127.0.0.1:8081"}[prod])
+	bank := &web.Bank{URL: env("BANK_URL"), Token: env("BANK_APP_TOKEN")}
+	public := strings.TrimRight(env("BANK_PUBLIC_URL"), "/")
+	if bank.URL == "" || bank.Token == "" || public == "" {
+		return fmt.Errorf("configuration: BANK_URL, BANK_PUBLIC_URL and BANK_APP_TOKEN are required")
+	}
+	base := env("CASINO_BASE_URL")
+	if prod && (!strings.HasPrefix(base, "https://") || !strings.HasPrefix(public, "https://")) {
+		return fmt.Errorf("configuration: production requires https CASINO_BASE_URL and BANK_PUBLIC_URL")
+	}
+	var log *slog.Logger
+	if prod {
+		log = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	} else {
+		log = slog.New(slog.NewTextHandler(os.Stderr, nil))
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Info("listening", "addr", addr, "bank", bank.URL, "sign-in", public+"/auth/app")
+	srv := web.New(web.Config{BankURL: public, Secure: strings.HasPrefix(base, "https://"), Bank: bank, Log: log})
+	return srv.Serve(ctx, addr, 10*time.Second)
+}
+
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

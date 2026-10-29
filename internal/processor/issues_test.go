@@ -224,6 +224,8 @@ func TestClosedCasinoRejectsEverythingAndMovesNothing(t *testing.T) {
 	comment(m, 11, "/withdraw 20", alice)
 	comment(m, 12, "/deposit 30", alice)
 	comment(m, 13, "/credit 5 sorry", house)
+	comment(m, 14, "where did the casino go?", alice)
+	comment(m, 15, "just chatting", house)
 	m.issues = append(m.issues, gh.Issue{Number: 2, User: bob, State: "open"})
 	payDeposit(u, alice, alice, 500, 10)
 	if err := p.Run(ctx); err != nil {
@@ -238,8 +240,14 @@ func TestClosedCasinoRejectsEverythingAndMovesNothing(t *testing.T) {
 			t.Fatalf("%s was not rejected", id)
 		}
 	}
-	if !hasReply(m, 1, "The casino is closed right now. Your money is safe.") || !hasReply(m, 2, "The casino is closed right now.") {
-		t.Fatal("missing closed notice")
+	if s.Events["comment-14"].Type != "rejected" {
+		t.Fatal("a player's plain comment should get the moved notice too")
+	}
+	if _, answered := s.Events["comment-15"]; answered {
+		t.Fatal("the operator's chat is not a command")
+	}
+	if !hasReply(m, 1, "The Casino has moved!** https://casino.baileys.dev Your balance is waiting") || !hasReply(m, 2, "The Casino has moved!") {
+		t.Fatal("missing moved notice")
 	}
 	p.Closed = false
 	if err := p.Run(ctx); err != nil {

@@ -1,5 +1,22 @@
 # ChrisCoin Casino
 
+> **The casino has moved to https://casino.baileys.dev.** It now runs as a live web service: games settle instantly against your [Bailey Bank](https://bank.baileys.dev) account, from Main or any bucket, with the house in the `baely/Casino` bucket. Every balance from this GitHub casino was moved to its owner's bank account. The GitHub worker below stays in closed mode and answers every comment with the new address.
+
+## The live casino
+
+`casino serve` runs it (see `internal/web` and the `Dockerfile`). It keeps no balances: a bet is drawn with the same game rules as below (`internal/game`) and settled by Bailey Bank's app API as one event that moves the stake to the house bucket and the payout back. Players sign in through Bailey Bank, which hands the casino a one-time code. Configuration:
+
+| Variable | Meaning |
+| --- | --- |
+| `BANK_URL` | Bailey Bank as the casino reaches it, e.g. `http://bank:8080` |
+| `BANK_PUBLIC_URL` | Bailey Bank's public URL, for sign-in and links |
+| `BANK_APP_TOKEN` | The bank's `BANK_CASINO_TOKEN` (also as `BANK_APP_TOKEN_FILE`) |
+| `CASINO_BASE_URL` | This casino's public URL |
+| `CASINO_ENV` | `production` requires https URLs; the image sets it |
+| `CASINO_ADDR` | Listen address, `:8080` in the image |
+
+## The GitHub casino (closed)
+
 A Go worker that runs a ChrisCoin casino through GitHub Issues, Git, and GitHub Actions. Git stores the ledger; GitHub accounts identify players; Actions processes commands. No server or database is required.
 
 This is a working implementation draft. Automated tests exercise the complete flow against simulated GitHub and ChrisCoin stores; hosted multi-account operation still needs verification after configuration.

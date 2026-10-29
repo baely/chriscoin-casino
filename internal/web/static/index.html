@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a3a29">
+<title>ChrisCoin Casino</title>
+<link rel="icon" href="/static/favicon.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Limelight&family=Public+Sans:wght@400;600;800&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <span class="logo sm">ChrisCoin Casino</span>
+    <div class="wallet" id="wallet" aria-live="polite"></div>
+    <button id="userbtn" class="userbtn" aria-haspopup="true"></button>
+  </div>
+</header>
+
+<main class="page">
+  <nav class="tabs" role="tablist" aria-label="Games">
+    <button role="tab" data-game="roulette">Roulette</button>
+    <button role="tab" data-game="slots">Slots</button>
+    <button role="tab" data-game="lucky">Lucky Dip</button>
+  </nav>
+
+  <div class="table">
+    <section class="stage" id="stage" aria-label="Game"></section>
+
+    <section class="controls" aria-label="Your bet">
+      <div class="field">
+        <label for="bucket">Play from</label>
+        <select id="bucket"></select>
+      </div>
+      <div class="field">
+        <label for="stake">Stake</label>
+        <div class="stake-in"><input id="stake" type="number" min="1" step="1" inputmode="numeric" value="10"><span>CC</span></div>
+        <div class="chips" id="chips"></div>
+        <div class="fine" id="limits"></div>
+      </div>
+      <div id="betpanel"></div>
+      <button id="play" class="btn gold block big" type="button">Spin</button>
+      <div id="result" class="result" aria-live="polite"></div>
+    </section>
+  </div>
+
+  <section class="history" aria-label="Your recent plays">
+    <h2>Your plays</h2>
+    <div id="history"><p class="fine">Nothing yet. Good luck!</p></div>
+  </section>
+</main>
+
+<footer class="foot">
+  <span id="house"></span>
+  <span>Every bet is settled by <a id="banklink" href="#">Bailey Bank</a> the moment you play. ChrisCoin has no monetary value.</span>
+</footer>
+<div id="toasts" class="toasts" aria-live="assertive"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
