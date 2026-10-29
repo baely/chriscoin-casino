@@ -19,6 +19,10 @@ import (
 const LedgerPath = "ledger/events.jsonl"
 const editedMessage = "Edited comments are not accepted; submit a new comment."
 
+// closedMessage answers every command while the casino is closed. The command
+// is recorded as rejected, so it never runs, even after the casino reopens.
+const closedMessage = "🚧 The casino is closed right now. Your money is safe. Check back soon! This command wasn’t run; send it again once we reopen."
+
 type Store interface {
 	Main(context.Context) (string, error)
 	File(context.Context, string, string) ([]byte, error)
@@ -54,9 +58,12 @@ type Processor struct {
 	Now        func() time.Time
 	Sample     func(wager ledger.Event) (game.Draw, error)
 	Limit      int
-	events     []ledger.Event
-	state      *ledger.State
-	base       string
+	// Closed stops all gambling, deposits, withdrawals, operator commands,
+	// payment imports, and settlements. Commands only receive closedMessage.
+	Closed bool
+	events []ledger.Event
+	state  *ledger.State
+	base   string
 }
 
 func (p *Processor) now() time.Time {
@@ -177,7 +184,7 @@ func (p *Processor) Run(ctx context.Context) error {
 	// its recovered upstream issue association enter the ledger in the right order.
 	// Link deposit requests first too: only payments of linked casino
 	// requests are credited, and an import is never revisited.
-	if p.state.Initialized {
+	if p.state.Initialized && !p.Closed {
 		if err := p.recoverSubmissions(ctx); err != nil {
 			return err
 		}
@@ -208,6 +215,9 @@ func (p *Processor) Run(ctx context.Context) error {
 	if identity.ID != p.Config.TreasuryID || identity.Type != "User" {
 		return fmt.Errorf("treasury username does not resolve to its configured numeric ID; refresh its upstream account")
 	}
+	if !p.state.Initialized && p.Closed {
+		return nil
+	}
 	if !p.state.Initialized {
 		openingData, err := p.Upstream.File(ctx, LedgerPath, p.Config.StartingCommit)
 		if err != nil {
@@ -230,7 +240,7 @@ func (p *Processor) Run(ctx context.Context) error {
 		}
 	}
 	// Import payments after the fixed baseline even on the first live run.
-	if commit != p.state.UpstreamCommit {
+	if commit != p.state.UpstreamCommit && !p.Closed {
 		sync, err := up.Sync(p.state, commit)
 		if err != nil {
 			return err
@@ -239,18 +249,24 @@ func (p *Processor) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	if err := p.releaseRejected(ctx, up); err != nil {
-		return err
-	}
-	if err := p.settle(ctx); err != nil {
-		return err
-	}
 	issues, err := p.Store.Issues(ctx)
 	if err != nil {
 		return err
 	}
-	if err := p.ensureAccounts(ctx, issues); err != nil {
-		return err
+	if p.Closed {
+		if err := p.closedIssues(ctx, issues); err != nil {
+			return err
+		}
+	} else {
+		if err := p.releaseRejected(ctx, up); err != nil {
+			return err
+		}
+		if err := p.settle(ctx); err != nil {
+			return err
+		}
+		if err := p.ensureAccounts(ctx, issues); err != nil {
+			return err
+		}
 	}
 	accounts := []*ledger.Account{}
 	for _, a := range p.state.Accounts {
@@ -297,6 +313,8 @@ func (p *Processor) Run(ctx context.Context) error {
 			command, amount, parseErr := ledger.Command(c.Body)
 			gameName, bet, stake, gameErr := ledger.Play(c.Body)
 			switch {
+			case p.Closed:
+				e.Reason = closedMessage
 			case admin && adminCommand != "":
 				target := p.state.Accounts[a.ID]
 				switch {
@@ -346,6 +364,10 @@ func (p *Processor) Run(ctx context.Context) error {
 				}
 			}
 			if data, err := p.Store.File(ctx, LedgerPath, eventBranch(e.ID)); err == nil {
+				// A command frozen before closing stays pending until reopening.
+				if p.Closed {
+					continue
+				}
 				frozen, err := ledger.Parse(data)
 				if err != nil || len(frozen) == 0 {
 					return fmt.Errorf("invalid command checkpoint")
@@ -361,16 +383,21 @@ func (p *Processor) Run(ctx context.Context) error {
 			if err := p.commit(ctx, e); err != nil {
 				return err
 			}
+			if p.Closed {
+				continue
+			}
 			if err := p.settle(ctx); err != nil {
 				return err
 			}
 		}
 	}
-	if err := p.submitDeposits(ctx); err != nil {
-		return err
-	}
-	if err := p.submitWithdrawals(ctx, up); err != nil {
-		return err
+	if !p.Closed {
+		if err := p.submitDeposits(ctx); err != nil {
+			return err
+		}
+		if err := p.submitWithdrawals(ctx, up); err != nil {
+			return err
+		}
 	}
 	return p.results(ctx, up)
 }

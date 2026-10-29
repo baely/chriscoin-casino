@@ -40,4 +40,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           CHRISCOIN_TOKEN: ${{ secrets.CHRISCOIN_TOKEN }}
+          # "true" closes the casino: every command is answered with a closed
+          # notice and no wagers, deposits, withdrawals, or payments are processed.
+          CASINO_CLOSED: "true"
         run: go run ./cmd/casino process

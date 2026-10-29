@@ -94,6 +94,7 @@ func run() error {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 		p := processor.Processor{Repository: repo, Config: cfg, Store: gh.New(repo, token), Upstream: gh.New(cfg.UpstreamRepository, token)}
+		p.Closed = os.Getenv("CASINO_CLOSED") == "true"
 		if treasuryToken := os.Getenv("CHRISCOIN_TOKEN"); treasuryToken != "" {
 			p.Payer = gh.New(cfg.UpstreamRepository, treasuryToken)
 		}

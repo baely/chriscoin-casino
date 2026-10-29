@@ -114,6 +114,21 @@ func (p *Processor) ensureAccounts(ctx context.Context, issues []gh.Issue) error
 	}
 	return nil
 }
+
+// closedIssues answers issues opened while the casino is closed without
+// opening an account; they are handled normally once the casino reopens.
+func (p *Processor) closedIssues(ctx context.Context, issues []gh.Issue) error {
+	for _, issue := range issues {
+		a := p.state.Accounts[issue.User.ID]
+		if _, handled := p.state.Events[fmt.Sprintf("duplicate-%d", issue.Number)]; issue.User.Type != "User" || issue.State != "open" || handled || (a != nil && a.Issue == issue.Number) {
+			continue
+		}
+		if err := p.reply(ctx, issue.Number, "closed", "🚧 The casino is closed right now. Your money is safe. Check back soon! Your account opens here once we reopen."); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 func (p *Processor) duplicateReply(ctx context.Context, duplicate, original int) error {
 	return p.reply(ctx, duplicate, "duplicate", fmt.Sprintf("Your seat is saved! [use your original issue](%s). This duplicate will be closed.", p.issueURL(original)))
 }
