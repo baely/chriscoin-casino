@@ -214,3 +214,39 @@ func TestRecordedAccountMustMatchIssueOpener(t *testing.T) {
 		t.Fatal("accepted an account issue opened by a different actor")
 	}
 }
+func TestClosedCasinoRejectsEverythingAndMovesNothing(t *testing.T) {
+	p, m, u := fixture(t)
+	bob := gh.User{ID: 2, Login: "bob", Type: "User"}
+	before := m.state(t)
+	created := u.created
+	p.Closed = true
+	comment(m, 10, "/wager 10", alice)
+	comment(m, 11, "/withdraw 20", alice)
+	comment(m, 12, "/deposit 30", alice)
+	comment(m, 13, "/credit 5 sorry", house)
+	m.issues = append(m.issues, gh.Issue{Number: 2, User: bob, State: "open"})
+	payDeposit(u, alice, alice, 500, 10)
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s := m.state(t)
+	if s.Accounts[1].Available != before.Accounts[1].Available || len(s.Wagers) != 0 || len(s.Withdrawals) != 0 || len(s.Deposits) != len(before.Deposits) || s.UpstreamCommit != before.UpstreamCommit || s.Accounts[2] != nil || u.created != created {
+		t.Fatalf("closed casino moved funds: %+v", s)
+	}
+	for _, id := range []string{"comment-10", "comment-11", "comment-12", "comment-13"} {
+		if s.Events[id].Type != "rejected" {
+			t.Fatalf("%s was not rejected", id)
+		}
+	}
+	if !hasReply(m, 1, "The casino is closed right now. Your money is safe.") || !hasReply(m, 2, "The casino is closed right now.") {
+		t.Fatal("missing closed notice")
+	}
+	p.Closed = false
+	if err := p.Run(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s = m.state(t)
+	if s.Events["comment-10"].Type != "rejected" || len(s.Wagers) != 0 || s.Accounts[2] == nil || s.UpstreamCommit == before.UpstreamCommit {
+		t.Fatal("reopening should resume normal work without running closed commands")
+	}
+}
