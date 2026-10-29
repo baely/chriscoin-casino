@@ -14,12 +14,18 @@
 | `CASINO_BASE_URL` | This casino's public URL |
 | `CASINO_ENV` | `production` requires https URLs; the image sets it |
 | `CASINO_ADDR` | Listen address, `:8080` in the image |
-| `CASINO_LEDGER_TOKEN` | GitHub token that can push to this repository; without it the live ledger isn't published |
+| `CASINO_GITHUB_APP_ID` | The GitHub App that commits the public ledgers; without it they aren't published |
+| `CASINO_GITHUB_APP_KEY` | That App's private key, PEM (or `CASINO_GITHUB_APP_KEY_FILE`). It needs Contents: read and write on this repository |
 | `CASINO_LEDGER_REPO` | Where to publish, `baely/chriscoin-casino` by default |
+| `CASINO_HOUSE` | The house bucket, `baely/Casino` by default |
 
-### The live ledger
+### The public ledgers
 
-Every bet Bailey Bank settles against the house is published to [`ledger/live.jsonl`](ledger/live.jsonl) on `main`, at most one commit a minute. Each line records the player, the game and its result, the stake and the payout, and the bank event (`bank_seq`) that settled it. `hash` is the SHA-256 of the line's JSON without `hash`, and `prev` is the previous line's hash, so editing or removing any line breaks every line after it. `ledger/events.jsonl` is the closed GitHub casino's ledger and is unchanged.
+[`ledger/bank.jsonl`](ledger/bank.jsonl) is a copy of Bailey Bank's whole ledger, exactly as the bank stores it: every account, payment, deposit, withdrawal, grant and bet. Each event's `hash` is the SHA-256 of its JSON with `hash` set to `""`, and `prev` is the previous event's hash, so editing or removing any event breaks every event after it.
+
+[`ledger/live.jsonl`](ledger/live.jsonl) is the live casino's ledger, rebuilt from it: one line per bet settled against `baely/Casino`, with the player, the game and its result, the stake, the payout and the bank event (`bank_seq`). It is hash-chained the same way.
+
+The bank serves its ledger publicly at `https://bank.baileys.dev/api/ledger?after=N`. Once a minute the live casino checks it; when there are new events it verifies every hash and link, appends them, rebuilds `ledger/live.jsonl` and commits both to `main` as its GitHub App (one commit however many events arrived). `casino ledger` does the same copy locally, without committing. `ledger/events.jsonl` is the closed GitHub casino's ledger and is unchanged.
 
 ## The GitHub casino (closed)
 

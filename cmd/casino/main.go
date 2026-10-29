@@ -23,7 +23,7 @@ import (
 
 func run() error {
 	if len(os.Args) < 2 {
-		return fmt.Errorf("usage: casino serve|validate|state|process|site [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH] [--out _site] [--commit SHA]")
+		return fmt.Errorf("usage: casino serve|ledger|validate|state|process|site [--config casino.json] [--ledger ledger/events.jsonl] [--base-ledger PATH] [--out _site] [--commit SHA]")
 	}
 	flags := flag.NewFlagSet(os.Args[1], flag.ContinueOnError)
 	configPath := flags.String("config", "casino.json", "configuration file")
@@ -37,6 +37,8 @@ func run() error {
 	switch os.Args[1] {
 	case "serve":
 		return serve()
+	case "ledger":
+		return copyBankLedger()
 	case "healthcheck":
 		// For the container healthcheck: the image has no shell or curl.
 		res, err := http.Get("http://127.0.0.1" + or(env("CASINO_ADDR"), ":8080") + "/healthz")
@@ -166,17 +168,66 @@ func serve() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	log.Info("listening", "addr", addr, "bank", bank.URL, "sign-in", public+"/auth/app")
-	// Publish settled bets to the repository's public live ledger.
-	if token := env("CASINO_LEDGER_TOKEN"); token != "" {
+	// Publish the bank's ledger to the repository as the GitHub App.
+	if appID := env("CASINO_GITHUB_APP_ID"); appID != "" {
+		key, err := gh.ParseKey([]byte(env("CASINO_GITHUB_APP_KEY")))
+		if err != nil {
+			return fmt.Errorf("configuration: CASINO_GITHUB_APP_KEY: %w", err)
+		}
 		repo := or(env("CASINO_LEDGER_REPO"), "baely/chriscoin-casino")
-		pub := &live.Publisher{Bank: bank, Repo: gh.New(repo, token), Interval: time.Minute, Log: log}
+		houseLogin, houseBucket, ok := strings.Cut(or(env("CASINO_HOUSE"), "baely/Casino"), "/")
+		if !ok {
+			return fmt.Errorf("configuration: CASINO_HOUSE must look like login/Bucket")
+		}
+		app := &gh.App{ID: appID, Key: key, Repository: repo}
+		client := gh.New(repo, "")
+		client.Auth = app.Token
+		pub := &live.Publisher{BankURL: bank.URL, HTTP: &http.Client{Timeout: time.Minute}, Repo: client, HouseLogin: houseLogin, HouseBucket: houseBucket, Interval: time.Minute, Log: log}
 		go pub.Run(ctx)
-		log.Info("publishing the live ledger", "repo", repo, "path", live.Path)
+		log.Info("publishing the bank ledger", "repo", repo, "path", live.BankPath)
 	} else {
-		log.Warn("CASINO_LEDGER_TOKEN is not set: the live ledger is not published")
+		log.Warn("CASINO_GITHUB_APP_ID is not set: the bank ledger is not published")
 	}
 	srv := web.New(web.Config{BankURL: public, Secure: strings.HasPrefix(base, "https://"), Bank: bank, Log: log})
 	return srv.Serve(ctx, addr, 10*time.Second)
+}
+
+// copyBankLedger appends Bailey Bank's new public events to ledger/bank.jsonl
+// and rebuilds ledger/live.jsonl from them, for checking the copy locally. It
+// prints a summary, or nothing when the bank has no new events.
+func copyBankLedger() error {
+	bankURL := or(env("BANK_PUBLIC_URL"), "https://bank.baileys.dev")
+	houseLogin, houseBucket, ok := strings.Cut(or(env("CASINO_HOUSE"), "baely/Casino"), "/")
+	if !ok {
+		return fmt.Errorf("CASINO_HOUSE must look like login/Bucket")
+	}
+	data, err := os.ReadFile(live.BankPath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	bank, err := live.ParseBank(data)
+	if err != nil {
+		return fmt.Errorf("%s: %w", live.BankPath, err)
+	}
+	from := bank.Head() + 1
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	n, err := bank.Fetch(ctx, bankURL, &http.Client{Timeout: time.Minute})
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	casino, plays := bank.Casino(houseLogin, houseBucket)
+	if err := os.WriteFile(live.BankPath, bank.Bytes(), 0o644); err != nil {
+		return err
+	}
+	if err := os.WriteFile(live.Path, casino, 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("Bailey Bank ledger: events %d–%d (%d casino plays in all)\n", from, bank.Head(), plays)
+	return nil
 }
 
 func main() {

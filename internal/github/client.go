@@ -56,6 +56,9 @@ type Client struct {
 	Repository, Token, BaseURL string
 	HTTP                       *http.Client
 	RetryDelay                 time.Duration
+	// Auth, when set, supplies the token for each request instead of Token,
+	// such as a GitHub App's installation token.
+	Auth func(context.Context) (string, error)
 }
 type APIError struct {
 	Status  int
@@ -87,7 +90,13 @@ func (c *Client) Global(ctx context.Context, method, path string, input, output 
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	token := c.Token
+	if c.Auth != nil {
+		if token, err = c.Auth(ctx); err != nil {
+			return err
+		}
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 	req.Header.Set("User-Agent", "ChrisCoin-Casino")
@@ -230,9 +239,10 @@ func (c *Client) WriteBranch(ctx context.Context, base, branch string, events []
 	return commit.SHA, err
 }
 
-// CommitFile commits content at path on top of base and fast-forwards main to
-// it. A 422 means main moved past base; retry from the new head.
-func (c *Client) CommitFile(ctx context.Context, base, path string, content []byte, message string) (string, error) {
+// CommitFiles commits files on top of base and fast-forwards main to it. A
+// 422 means main moved past base; retry from the new head. With a GitHub
+// App's token the commit is the App's, signed by GitHub.
+func (c *Client) CommitFiles(ctx context.Context, base string, files map[string][]byte, message string) (string, error) {
 	var parent struct {
 		Tree struct {
 			SHA string `json:"sha"`
@@ -241,13 +251,19 @@ func (c *Client) CommitFile(ctx context.Context, base, path string, content []by
 	if err := c.Do(ctx, "GET", "/git/commits/"+base, nil, &parent); err != nil {
 		return "", err
 	}
-	var blob, tree, commit struct {
+	var entries []map[string]string
+	for path, content := range files {
+		var blob struct {
+			SHA string `json:"sha"`
+		}
+		if err := c.Do(ctx, "POST", "/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(content), "encoding": "base64"}, &blob); err != nil {
+			return "", err
+		}
+		entries = append(entries, map[string]string{"path": path, "mode": "100644", "type": "blob", "sha": blob.SHA})
+	}
+	var tree, commit struct {
 		SHA string `json:"sha"`
 	}
-	if err := c.Do(ctx, "POST", "/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(content), "encoding": "base64"}, &blob); err != nil {
-		return "", err
-	}
-	entries := []map[string]string{{"path": path, "mode": "100644", "type": "blob", "sha": blob.SHA}}
 	if err := c.Do(ctx, "POST", "/git/trees", map[string]any{"base_tree": parent.Tree.SHA, "tree": entries}, &tree); err != nil {
 		return "", err
 	}
