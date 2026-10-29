@@ -15,6 +15,7 @@ import (
 
 	gh "chriscoin-casino/internal/github"
 	"chriscoin-casino/internal/ledger"
+	"chriscoin-casino/internal/live"
 	"chriscoin-casino/internal/processor"
 	"chriscoin-casino/internal/site"
 	"chriscoin-casino/internal/web"
@@ -165,6 +166,15 @@ func serve() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	log.Info("listening", "addr", addr, "bank", bank.URL, "sign-in", public+"/auth/app")
+	// Publish settled bets to the repository's public live ledger.
+	if token := env("CASINO_LEDGER_TOKEN"); token != "" {
+		repo := or(env("CASINO_LEDGER_REPO"), "baely/chriscoin-casino")
+		pub := &live.Publisher{Bank: bank, Repo: gh.New(repo, token), Interval: time.Minute, Log: log}
+		go pub.Run(ctx)
+		log.Info("publishing the live ledger", "repo", repo, "path", live.Path)
+	} else {
+		log.Warn("CASINO_LEDGER_TOKEN is not set: the live ledger is not published")
+	}
 	srv := web.New(web.Config{BankURL: public, Secure: strings.HasPrefix(base, "https://"), Bank: bank, Log: log})
 	return srv.Serve(ctx, addr, 10*time.Second)
 }

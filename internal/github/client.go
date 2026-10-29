@@ -229,6 +229,33 @@ func (c *Client) WriteBranch(ctx context.Context, base, branch string, events []
 	}
 	return commit.SHA, err
 }
+
+// CommitFile commits content at path on top of base and fast-forwards main to
+// it. A 422 means main moved past base; retry from the new head.
+func (c *Client) CommitFile(ctx context.Context, base, path string, content []byte, message string) (string, error) {
+	var parent struct {
+		Tree struct {
+			SHA string `json:"sha"`
+		} `json:"tree"`
+	}
+	if err := c.Do(ctx, "GET", "/git/commits/"+base, nil, &parent); err != nil {
+		return "", err
+	}
+	var blob, tree, commit struct {
+		SHA string `json:"sha"`
+	}
+	if err := c.Do(ctx, "POST", "/git/blobs", map[string]string{"content": base64.StdEncoding.EncodeToString(content), "encoding": "base64"}, &blob); err != nil {
+		return "", err
+	}
+	entries := []map[string]string{{"path": path, "mode": "100644", "type": "blob", "sha": blob.SHA}}
+	if err := c.Do(ctx, "POST", "/git/trees", map[string]any{"base_tree": parent.Tree.SHA, "tree": entries}, &tree); err != nil {
+		return "", err
+	}
+	if err := c.Do(ctx, "POST", "/git/commits", map[string]any{"message": message, "tree": tree.SHA, "parents": []string{base}}, &commit); err != nil {
+		return "", err
+	}
+	return commit.SHA, c.Do(ctx, "PATCH", "/git/refs/heads/main", map[string]any{"sha": commit.SHA, "force": false}, nil)
+}
 func (c *Client) CreatePR(ctx context.Context, branch, title, body string) (*PullRequest, error) {
 	var pr PullRequest
 	err := c.Do(ctx, "POST", "/pulls", map[string]string{"head": branch, "base": "main", "title": title, "body": body}, &pr)

@@ -142,3 +142,24 @@ func (b *Bank) Wager(ctx context.Context, w Wager) (WagerReply, error) {
 	err := b.do(ctx, http.MethodPost, "/api/app/wagers", w, &r)
 	return r, err
 }
+
+// Play is one bet the bank settled against the house bucket.
+type Play struct {
+	Seq    uint64    `json:"seq"`
+	ID     string    `json:"id"`
+	At     time.Time `json:"at"`
+	Player int64     `json:"player"`
+	Login  string    `json:"login"`
+	Stake  int64     `json:"stake"`
+	Payout int64     `json:"payout"`
+	Memo   string    `json:"memo"`
+}
+
+// Plays lists settled bets after the bank event seq, oldest first, a page at a time.
+func (b *Bank) Plays(ctx context.Context, after uint64) ([]Play, error) {
+	var r struct {
+		Plays []Play `json:"plays"`
+	}
+	err := b.do(ctx, http.MethodGet, "/api/app/plays?after="+strconv.FormatUint(after, 10), nil, &r)
+	return r.Plays, err
+}

@@ -14,6 +14,12 @@
 | `CASINO_BASE_URL` | This casino's public URL |
 | `CASINO_ENV` | `production` requires https URLs; the image sets it |
 | `CASINO_ADDR` | Listen address, `:8080` in the image |
+| `CASINO_LEDGER_TOKEN` | GitHub token that can push to this repository; without it the live ledger isn't published |
+| `CASINO_LEDGER_REPO` | Where to publish, `baely/chriscoin-casino` by default |
+
+### The live ledger
+
+Every bet Bailey Bank settles against the house is published to [`ledger/live.jsonl`](ledger/live.jsonl) on `main`, at most one commit a minute. Each line records the player, the game and its result, the stake and the payout, and the bank event (`bank_seq`) that settled it. `hash` is the SHA-256 of the line's JSON without `hash`, and `prev` is the previous line's hash, so editing or removing any line breaks every line after it. `ledger/events.jsonl` is the closed GitHub casino's ledger and is unchanged.
 
 ## The GitHub casino (closed)
 
